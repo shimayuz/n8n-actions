@@ -1,0 +1,21 @@
+# n8n
+*.backup
+credentials.json
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Dependencies
+node_modules/
