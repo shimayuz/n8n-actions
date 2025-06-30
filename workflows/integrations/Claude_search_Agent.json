@@ -1,0 +1,324 @@
+{
+  "name": "Claude search Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "こんにちは! 👋\n今日は何をしましょうか？",
+        "options": {}
+      },
+      "id": "33dda3a0-aff3-4f27-8741-a13d7508bc38",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "position": [
+        0,
+        240
+      ],
+      "webhookId": "a0032740-26d8-491b-93f9-2250906d0e17",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n\t\"type\": \"object\",\n\t\"properties\": {\n\t\t\"prompt\": {\n\t\t\t\"type\": \"string\"\n\t\t},\n\t\t\"model\": {\n\t\t\t\"type\": \"string\"\n\t\t}\n\t}\n}"
+      },
+      "id": "098d8b26-7f73-4bb4-828f-11bb98fa0a9b",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "position": [
+        400,
+        460
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "content": "## 最適なAI応答のための動的モデルセレクター\n\n**新しいAnthropic エージェント決定システム**は、ユーザーのクエリの内容と目的に基づいて、最も適切な大規模言語モデル（Anthropic Sonnet 4またはOpus 4）を自動的に選択する、動的でAI駆動のルーティングシステムです。\nこのワークフローは、クエリを最も適したモデルにインテリジェントにルーティングすることで、**動的で,最適化されたAI応答**を保証します。",
+        "height": 180,
+        "width": 880
+      },
+      "id": "75b97eab-ffd9-4db9-9bfe-6d1b05cf8ea0",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.output.prompt }}",
+        "options": {
+          "systemMessage": "=あなたは、最新情報をインターネットで検索できるweb_searchツールにアクセスできます。以下のように動作してください：\n\n1. ウェブサイト情報：\n支援しているウェブサイトに関するこの情報を理解してください。ユーザーとのやり取りのコンテキストとしてこれを使用してください。\n\n2. ウェブ検索ツール：\nインターネットを検索できるweb_searchツールにアクセスできます。使用するには、変数{web_search_question}を記述してください。ツールは関連する検索結果を返します。変数{model}を{{ $json.output.model }}に設定してください。\n\n3. ユーザークエリの処理：\nユーザーが質問をした場合、以下の手順に従ってください：\na) クエリを分析して、ウェブサイトに関連するものか、外部情報が必要かを判断します。\nb) ウェブサイトに関する質問の場合は、提供されたウェブサイト情報を使用して回答します。\nc) 外部情報が必要な場合は、web_searchツールを使用して関連データを見つけます。\n\n4. web_searchの使用：\n- ウェブサイト情報に提供されていない事実的で最新の情報にはweb_searchを使用してください。\n- 明確で簡潔な検索クエリを作成してください。\n- 最初の検索で有用な結果が得られない場合は、クエリを絞り込んで再度検索してください。\n- 効率を維持するため、ユーザークエリごとの検索は最大3回までに制限してください。\n\n5. Thinkの使用：\n- Thinkツールを使用して何かを考えてください。新しい情報を取得したりデータベースを変更したりはしませんが、思考をログに追加するだけです。複雑な推論やキャッシュメモリが必要な場合に使用してください。\n\n6. 応答の作成：\n- 関連性がある場合は、ウェブサイトの情報から始めてください。\n- 最新で正確な情報を提供するために、ウェブ検索結果を組み込んでください。\n- 調査結果を簡潔かつ一貫性を持ってまとめてください。\n- 確信が持てない場合や信頼できる情報が見つからない場合は、制限について正直に伝えてください。\n\n7. 倫理的配慮：\n- ユーザーのプライバシーを尊重してください。個人情報を求めたり保存したりしないでください。\n- 事実に基づいた情報を提供してください。推測や未確認の主張は避けてください。\n- 物議を醸すトピックについて尋ねられた場合は、バランスの取れた中立的な応答を心がけてください。\n- 違法行為に関与したり奨励したりしないでください。\n\n8. 出力形式：\n最終的な出力には、思考プロセス、ウェブ検索、その他のタグを含めないでください。\n"
+        }
+      },
+      "id": "5e795089-2461-48d5-be54-e7d6e791c6e8",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        580,
+        240
+      ],
+      "typeVersion": 1.9
+    },
+    {
+      "parameters": {},
+      "id": "cc60bad7-a4ff-4ab9-96a0-82fb23db0bf2",
+      "name": "Think",
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "position": [
+        800,
+        460
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {},
+      "id": "dba2ddb9-1d44-4b64-861e-231dbed5f5de",
+      "name": "Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "position": [
+        900,
+        460
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=あなたは**ルーティングエージェント**です。\n\nあなたのタスクは、ユーザークエリを分析し、各特定の使用ケースを処理するのに最も適切なモデルを決定することです。\n\n## 利用可能なモデル\n\n以下のモデルにアクセスできます：\n\n1. **claude-sonnet-4-20250514**\n2. **claude-opus-4-20250514**\n\n## モデルの強み\n\n### 1. claude-sonnet-4-20250514\n- 標準的な意思決定タスク\n- リアルタイムワークフロールーティング\n- データ検証と処理\n- 構造化データのパターン認識\n- ルーチンビジネスロジックの評価\n\n### 2. claude-opus-4-20250514\n- 複雑な多要素決定シナリオ\n- 深い推論を必要とする高度なデータ分析\n- 影響の大きい重要なビジネス上の決定\n- 非構造化データの複雑なパターン認識\n- 戦略的ワークフロー最適化\n\n## 出力形式\n\n出力は常に以下の形式の有効なJSONオブジェクトでなければなりません：\n\n```json\n{\n  \"prompt\": \"ユーザークエリをここに入力\",\n  \"model\": \"選択されたモデル名\"\n}\n```\n\n- **\"prompt\"**フィールドには、選択されたモデルに送信される正確なクエリを含める必要があります。\n- **\"model\"**フィールドには、モデル名（claude-sonnet-4-20250514、claude-opus-4-20250514のいずれか）を含める必要があります。\n\n**重要：** JSONオブジェクトのみを返してください。説明や追加のテキストを含めないでください。"
+        }
+      },
+      "id": "e84c47de-24f8-43a9-9086-f85bd39d2123",
+      "name": "Anthropic Routing Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        220,
+        240
+      ],
+      "typeVersion": 1.9
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.output.model }}"
+        },
+        "options": {}
+      },
+      "id": "4ef69572-3c9d-4c3c-adab-88d13e96760b",
+      "name": "Sonnet 4 or Opus 4",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "position": [
+        580,
+        460
+      ],
+      "typeVersion": 1.3,
+      "credentials": {
+        "anthropicApi": {
+          "id": "dIv4iJF37YvycXaQ",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-3-7-sonnet-20250219",
+          "cachedResultName": "Claude Sonnet 3.7"
+        },
+        "options": {
+          "maxTokensToSample": 4096,
+          "temperature": 0.7
+        }
+      },
+      "id": "d82b0f8b-377f-4c86-82ea-bf29ca0c20ce",
+      "name": "Sonnet 3.7",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "position": [
+        200,
+        460
+      ],
+      "typeVersion": 1.3,
+      "credentials": {
+        "anthropicApi": {
+          "id": "dIv4iJF37YvycXaQ",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('When chat message received').item.json.sessionId }}"
+      },
+      "id": "0e719b9a-4d9b-4266-8034-5cf5d4347858",
+      "name": "Simple Memory1",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        700,
+        460
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "toolDescription": "ウェブ検索に使用するツール",
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "=2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('JSON', `{\n  \"model\": \"{model}\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{web_search_question}\"\n    }\n  ],\n  \"tools\": [\n    {\n      \"type\": \"web_search_20250305\",\n      \"name\": \"web_search\",\n      \"max_uses\": 5\n    }\n  ]\n}\n`, 'json') }}",
+        "options": {}
+      },
+      "id": "cfc49798-7803-4f0c-ae8d-1e4650225d67",
+      "name": "web_search",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "position": [
+        1000,
+        460
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "anthropicApi": {
+          "id": "dIv4iJF37YvycXaQ",
+          "name": "Anthropic account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Think": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sonnet 3.7": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Anthropic Routing Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "web_search": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sonnet 4 or Opus 4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Routing Agent": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Anthropic Routing Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Anthropic Routing Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8d40031a-eaf8-4803-8a91-471e8d0a3da9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cadf0b85d4005271946499c61f49970d7be5491fe2c28967cd0fd9f759fdd77d"
+  },
+  "id": "rueIsCLmCibeWCBL",
+  "tags": []
+}
