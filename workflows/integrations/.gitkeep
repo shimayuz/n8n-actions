@@ -1,0 +1,13 @@
+# Integrations Directory
+
+Place integration-related workflows here:
+- Slack integrations
+- Discord bots
+- Teams connectors
+- Email automations
+- API webhooks
+
+Example:
+- slack-error-notifications.json
+- discord-welcome-bot.json
+- teams-daily-standup.json
