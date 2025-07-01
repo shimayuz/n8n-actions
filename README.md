@@ -13,10 +13,19 @@ This repository implements a CI/CD pipeline for n8n workflows:
 
 ```
 workflows/           # n8n workflow JSON files
-├── samples/        # Example workflows
+├── samples/        # Example workflows (reference only)
+├── *.json          # Your actual workflow files go here
 docs/               # Documentation
 scripts/            # Utility scripts
+github-sync-workflow.json  # The sync workflow to import into n8n
 ```
+
+### Directory Usage Guide
+
+- **`workflows/`** - Main directory for all your production workflows
+- **`workflows/samples/`** - Example workflows for reference (not synced to production)
+- **`docs/`** - Setup guides and documentation
+- **`scripts/`** - Utility scripts for workflow validation
 
 ## 🔧 Setup Instructions
 
@@ -47,22 +56,97 @@ In the "Define Local Variables" node:
 - `github_owner`: Your GitHub username/organization
 - `repo_name`: `n8n-workflows`
 
+## 📂 Actual Workflow File Placement
+
+### Where to Put Your Workflows
+
+**Production workflows go directly in `workflows/` directory:**
+
+```
+workflows/
+├── customer-onboarding.json       # ✓ Correct placement
+├── daily-backup-automation.json   # ✓ Correct placement
+├── slack-notifications.json       # ✓ Correct placement
+├── samples/                       # ❌ NOT for production workflows
+│   ├── sample-webhook.json        # Reference only
+│   └── sample-data-processing.json # Reference only
+```
+
+### Organizing Workflows (Optional)
+
+You can create subdirectories for better organization:
+
+```
+workflows/
+├── integrations/
+│   ├── slack-error-notify.json
+│   ├── teams-daily-report.json
+│   └── discord-webhook.json
+├── data-processing/
+│   ├── csv-to-database.json
+│   ├── api-data-sync.json
+│   └── etl-pipeline.json
+├── automation/
+│   ├── backup-automation.json
+│   ├── cleanup-old-files.json
+│   └── scheduled-reports.json
+└── samples/                       # Keep samples separate
+    └── ...
+```
+
+**Note:** The GitHub sync workflow will process ALL `.json` files in the `workflows/` directory and its subdirectories.
+
 ## 📝 Workflow Management
 
 ### Adding a New Workflow
 
-1. Export your workflow from n8n (JSON format)
-2. Create a new file in `workflows/` directory
-3. Name it descriptively: `workflow-name.json`
-4. Create a PR with your changes
-5. After merge, it will auto-create in n8n
+1. **Export from n8n:**
+   - In n8n, go to your workflow
+   - Click the options menu (⋮) → Download
+   - Save the JSON file
+
+2. **Add to repository:**
+   ```bash
+   # Copy to workflows directory (NOT samples!)
+   cp ~/Downloads/my-new-workflow.json workflows/
+   
+   # Or if organizing by category
+   cp ~/Downloads/slack-integration.json workflows/integrations/
+   ```
+
+3. **Commit and push:**
+   ```bash
+   git add workflows/my-new-workflow.json
+   git commit -m "feat: add new customer onboarding workflow"
+   git push origin feature/new-workflow
+   ```
+
+4. **Create PR and merge**
+   - Create a pull request
+   - After merge, the workflow will automatically be created in n8n
 
 ### Updating an Existing Workflow
 
-1. Export the updated workflow from n8n
-2. Replace the existing file in `workflows/`
-3. Create a PR with your changes
-4. After merge, it will auto-update in n8n
+1. **Export updated version from n8n:**
+   - Make changes in n8n
+   - Download the updated workflow
+
+2. **Replace the file:**
+   ```bash
+   # Replace existing file (keep the same filename!)
+   cp ~/Downloads/my-updated-workflow.json workflows/my-existing-workflow.json
+   ```
+
+3. **Commit and push:**
+   ```bash
+   git add workflows/my-existing-workflow.json
+   git commit -m "fix: update error handling in customer workflow"
+   git push origin fix/update-workflow
+   ```
+
+4. **Create PR and merge**
+   - The workflow will be updated in n8n after merge
+   - The workflow ID in the JSON ensures it updates the correct workflow
 
 ### Workflow Naming Convention
 
@@ -92,12 +176,46 @@ node scripts/validate-workflow.js workflows/your-workflow.json
 4. Submit PR
 5. Wait for review and merge
 
+## 🔄 Complete Workflow Example
+
+### Initial Setup
+```bash
+# 1. Clone the repository
+git clone https://github.com/shimayuz/n8n-workflows.git
+cd n8n-workflows
+
+# 2. Import github-sync-workflow.json into n8n
+# 3. Configure webhooks and credentials
+```
+
+### Daily Operations
+```bash
+# Create new feature branch
+git checkout -b feature/add-salesforce-sync
+
+# Add new workflow
+cp ~/Downloads/salesforce-sync.json workflows/integrations/
+
+# Validate the workflow
+node scripts/validate-workflow.js workflows/integrations/salesforce-sync.json
+
+# Commit and push
+git add workflows/integrations/salesforce-sync.json
+git commit -m "feat: add Salesforce data sync workflow"
+git push origin feature/add-salesforce-sync
+
+# Create PR → Review → Merge → Auto-sync to n8n ✓
+```
+
 ## ⚠️ Important Notes
 
 - **Workflow IDs**: The sync process preserves workflow IDs
 - **Active Status**: Workflows maintain their active/inactive state
 - **Credentials**: Credentials are NOT synced (configure manually in n8n)
 - **Backup**: Always backup critical workflows before major changes
+- **File Placement**: Put actual workflows in `workflows/`, NOT in `samples/`
+- **File Names**: Don't change filenames of existing workflows (breaks the update link)
+- **Validation**: Always validate JSON before committing
 
 ## 📚 Resources
 
