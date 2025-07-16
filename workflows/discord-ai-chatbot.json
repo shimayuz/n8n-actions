@@ -9,67 +9,73 @@
         "responseData": "firstEntryJson",
         "options": {}
       },
-      "id": "webhook_1",
+      "id": "a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [250, 300],
-      "webhookId": "discord-bot-webhook"
+      "webhookId": "discord-bot-webhook",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "language": "javaScript",
-        "jsCode": "// Discordからのデータを解析\nconst discordData = $input.first().json;\n\n// デバッグ用にデータ構造を確認\nconsole.log('Discord Data:', JSON.stringify(discordData, null, 2));\n\n// Bot IDを環境変数または固定値から取得\nconst botId = \"{{YOUR_BOT_ID}}\"; // ここにBot IDを設定\n\n// guild_idを取得\nconst guildId = discordData.guild_id || '';\n\n// メンションチェック\nconst mentions = discordData.mentions || [];\nconst isBotMentioned = mentions.some(mention => mention.id === botId);\n\nif (!isBotMentioned) {\n  throw new Error(\"Bot was not mentioned\");\n}\n\n// メッセージからメンションを除去\nconst content = discordData.content.replace(/<@!?\\d+>/g, '').trim();\n\nreturn {\n  json: {\n    content: content,\n    channelId: discordData.channel_id,\n    guildId: guildId,\n    authorId: discordData.author.id,\n    authorName: discordData.author.username,\n    messageId: discordData.id\n  }\n};"
+        "jsCode": "// Discordからのデータを解析\nconst discordData = $input.first().json;\n\n// デバッグ用にデータ構造を確認\nconsole.log('Discord Data:', JSON.stringify(discordData, null, 2));\n\n// Bot IDを環境変数から取得（ワークフロー変数を使用）\nconst botId = $vars.DISCORD_BOT_ID || \"YOUR_BOT_ID_HERE\";\n\n// メンションチェック（Discord Webhook形式）\n// Discordの標準的なWebhook形式に対応\nconst content = discordData.content || '';\nconst mentionPattern = new RegExp(`<@!?${botId}>`);\nconst isBotMentioned = mentionPattern.test(content);\n\nif (!isBotMentioned && discordData.type !== 'INTERACTION_CREATE') {\n  throw new Error(\"Bot was not mentioned\");\n}\n\n// メッセージからメンションを除去してクリーンなテキストを取得\nconst cleanContent = content.replace(/<@!?\\d+>/g, '').trim();\n\n// Discord APIに必要な情報を整理\nreturn {\n  json: {\n    content: cleanContent,\n    channel_id: discordData.channel_id,\n    guild_id: discordData.guild_id,\n    author: {\n      id: discordData.author?.id || discordData.user?.id,\n      username: discordData.author?.username || discordData.user?.username\n    },\n    message_id: discordData.id,\n    webhook_token: discordData.webhook_token // Discord Interaction用\n  }\n};"
       },
-      "id": "function_1",
-      "name": "Parse Discord Message",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "id": "b2c3d4e5-f6g7-h8i9-j0k1-l2m3n4o5p6q7",
+      "name": "Parse Discord Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [450, 300]
     },
     {
       "parameters": {
-        "promptType": "define",
-        "text": "={{ $json.content }}",
-        "hasOutputParser": false
-      },
-      "id": "agent_1",
-      "name": "AI Agent",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 2.2,
-      "position": [650, 300]
-    },
-    {
-      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
         "model": {
           "value": "gpt-4o-mini",
           "mode": "list"
         },
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "あなたは親切で役立つDiscord Botアシスタントです。簡潔で分かりやすい回答を心がけてください。"
+            },
+            {
+              "role": "user", 
+              "content": "={{ $json.content }}"
+            }
+          ]
+        },
         "options": {
-          "temperature": 0.7,
-          "maxTokens": 1000
+          "maxTokens": 500,
+          "temperature": 0.7
         }
       },
-      "id": "openai_1",
-      "name": "OpenAI Chat Model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [650, 150],
+      "id": "c3d4e5f6-g7h8-i9j0-k1l2-m3n4o5p6q7r8",
+      "name": "OpenAI",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
+      "position": [650, 300],
       "credentials": {
         "openAiApi": {
           "id": "{{OPENAI_CREDENTIAL_ID}}",
-          "name": "OpenAI API"
+          "name": "OpenAI account"
         }
-      }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
-        "jsCode": "// AI Agentの出力とユーザー情報を結合\nconst parseData = $('Parse Discord Message').item.json;\nconst aiOutput = $json.output || $json.text || 'エラー: 応答を生成できませんでした。';\n\n// Discord用のメッセージを作成\nconst message = `<@${parseData.authorId}> ${aiOutput}`;\n\nreturn {\n  json: {\n    guildId: parseData.guildId,\n    channelId: parseData.channelId,\n    message: message\n  }\n};"
+        "jsCode": "// OpenAIのレスポンスとDiscord情報を結合\nconst parseData = $('Parse Discord Data').item.json;\nconst openAiResponse = $json;\n\n// OpenAIのレスポンス構造を確認\nlet aiMessage = '';\nif (openAiResponse.choices && openAiResponse.choices[0]) {\n  aiMessage = openAiResponse.choices[0].message?.content || openAiResponse.choices[0].text || '';\n} else if (openAiResponse.message?.content) {\n  aiMessage = openAiResponse.message.content;\n} else {\n  aiMessage = 'エラー: AI応答を取得できませんでした。';\n}\n\n// Discord送信用のデータを作成\nreturn {\n  json: {\n    guild_id: parseData.guild_id,\n    channel_id: parseData.channel_id,\n    reply_message: `<@${parseData.author.id}> ${aiMessage}`,\n    author_id: parseData.author.id\n  }\n};"
       },
-      "id": "function_2",
-      "name": "Format Discord Response",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "id": "e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0",
+      "name": "Format Discord Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [750, 300]
     },
     {
@@ -78,27 +84,28 @@
         "resource": "message",
         "operation": "send",
         "guildId": {
-          "value": "={{ $json.guildId }}",
+          "value": "={{ $json.guild_id }}",
           "mode": "id"
         },
         "channelId": {
-          "value": "={{ $json.channelId }}",
+          "value": "={{ $json.channel_id }}",
           "mode": "id"
         },
-        "message": "={{ $json.message }}",
+        "message": "={{ $json.reply_message }}",
         "options": {}
       },
-      "id": "discord_1",
-      "name": "Send Discord Message",
+      "id": "d4e5f6g7-h8i9-j0k1-l2m3-n4o5p6q7r8s9",
+      "name": "Send to Discord",
       "type": "n8n-nodes-base.discord",
       "typeVersion": 2,
       "position": [950, 300],
       "credentials": {
         "discordBotApi": {
           "id": "{{DISCORD_CREDENTIAL_ID}}",
-          "name": "Discord Bot"
+          "name": "Discord Bot account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -106,52 +113,41 @@
       "main": [
         [
           {
-            "node": "Parse Discord Message",
+            "node": "Parse Discord Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse Discord Message": {
+    "Parse Discord Data": {
       "main": [
         [
           {
-            "node": "AI Agent",
+            "node": "OpenAI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "AI Agent": {
+    "OpenAI": {
       "main": [
         [
           {
-            "node": "Format Discord Response",
+            "node": "Format Discord Reply",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Format Discord Response": {
+    "Format Discord Reply": {
       "main": [
         [
           {
-            "node": "Send Discord Message",
+            "node": "Send to Discord",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -162,10 +158,11 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "1.0.0",
-  "id": "discord-ai-chatbot",
+  "versionId": "dc4ec53-002",
   "meta": {
     "instanceId": "n8n"
   },
-  "tags": []
+  "tags": ["discord", "chatbot", "openai", "gpt-4o-mini"],
+  "pinData": {},
+  "staticData": null
 }
