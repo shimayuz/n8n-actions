@@ -750,7 +750,7 @@
   "settings": {
     "executionOrder": "v1",
     "timezone": "Asia/Tokyo",
-    "saveExecutionProgress": "all",
+    "saveExecutionProgress": true,
     "saveDataSuccessExecution": "all",
     "saveDataErrorExecution": "all",
     "executionTimeout": 60
