@@ -750,9 +750,9 @@
   "settings": {
     "executionOrder": "v1",
     "timezone": "Asia/Tokyo",
-    "saveExecutionProgress": true,
-    "saveDataSuccessExecution": true,
-    "saveDataErrorExecution": true,
+    "saveExecutionProgress": "all",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
     "executionTimeout": 60
   },
   "id": "line-gemini-bot-workflow",
