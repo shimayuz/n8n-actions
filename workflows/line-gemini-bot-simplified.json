@@ -1,5 +1,5 @@
 {
-  "name": "LINE Gemini Bot Simplified",
+  "name": "LINE Gemini Bot Simplified V2",
   "nodes": [
     {
       "parameters": {
@@ -38,12 +38,12 @@
           ]
         }
       },
-      "name": "Route Text",
+      "name": "Is Text Message",
       "type": "n8n-nodes-base.if",
       "typeVersion": 3,
-      "position": [650, 200],
-      "id": "route-text",
-      "notes": "テキストメッセージの判定"
+      "position": [650, 300],
+      "id": "if-text",
+      "notes": "テキストメッセージかどうか"
     },
     {
       "parameters": {
@@ -56,12 +56,12 @@
           ]
         }
       },
-      "name": "Route Image",
+      "name": "Is Image Request",
       "type": "n8n-nodes-base.if",
       "typeVersion": 3,
-      "position": [650, 300],
-      "id": "route-image",
-      "notes": "画像生成リクエストの判定"
+      "position": [850, 400],
+      "id": "if-image",
+      "notes": "画像生成リクエストかどうか"
     },
     {
       "parameters": {
@@ -74,12 +74,12 @@
           ]
         }
       },
-      "name": "Route Audio",
+      "name": "Is Audio Message",
       "type": "n8n-nodes-base.if",
       "typeVersion": 3,
-      "position": [650, 400],
-      "id": "route-audio",
-      "notes": "音声メッセージの判定"
+      "position": [1050, 500],
+      "id": "if-audio",
+      "notes": "音声メッセージかどうか"
     },
     {
       "parameters": {
@@ -96,7 +96,7 @@
       "name": "Gemini Text",
       "type": "@n8n/n8n-nodes-langchain.googleGemini",
       "typeVersion": 1,
-      "position": [850, 100],
+      "position": [850, 200],
       "id": "gemini-text",
       "credentials": {
         "googleGeminiApi": {
@@ -120,7 +120,7 @@
       "name": "Gemini Image",
       "type": "@n8n/n8n-nodes-langchain.googleGemini",
       "typeVersion": 1,
-      "position": [850, 300],
+      "position": [1050, 300],
       "id": "gemini-image",
       "credentials": {
         "googleGeminiApi": {
@@ -148,7 +148,7 @@
       "name": "Download Audio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [850, 500],
+      "position": [1250, 400],
       "id": "download-audio",
       "notes": "LINE音声ファイルをダウンロード"
     },
@@ -167,7 +167,7 @@
       "name": "Gemini Audio",
       "type": "@n8n/n8n-nodes-langchain.googleGemini",
       "typeVersion": 1,
-      "position": [1050, 500],
+      "position": [1450, 400],
       "id": "gemini-audio",
       "credentials": {
         "googleGeminiApi": {
@@ -183,7 +183,7 @@
       "name": "Format Reply",
       "type": "n8n-nodes-base.function", 
       "typeVersion": 1,
-      "position": [1250, 300],
+      "position": [1650, 300],
       "id": "format-reply",
       "notes": "返信フォーマット作成"
     },
@@ -212,7 +212,7 @@
       "name": "Reply to LINE",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1450, 300],
+      "position": [1850, 300],
       "id": "line-reply",
       "notes": "LINEへ返信送信"
     }
@@ -233,14 +233,14 @@
       "main": [
         [
           {
-            "node": "Route Text",
+            "node": "Is Text Message",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Route Text": {
+    "Is Text Message": {
       "main": [
         [
           {
@@ -251,14 +251,14 @@
         ],
         [
           {
-            "node": "Route Image",
+            "node": "Is Image Request",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Route Image": {
+    "Is Image Request": {
       "main": [
         [
           {
@@ -269,14 +269,14 @@
         ],
         [
           {
-            "node": "Route Audio",
+            "node": "Is Audio Message",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Route Audio": {
+    "Is Audio Message": {
       "main": [
         [
           {
@@ -350,7 +350,7 @@
       ]
     }
   },
-  "versionId": "v2-simplified",
+  "versionId": "v2-simplified-fixed",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -358,7 +358,7 @@
     "saveDataSuccessExecution": "all",
     "saveDataErrorExecution": "all"
   },
-  "id": "line-gemini-simplified",
+  "id": "line-gemini-simplified-v2",
   "tags": [],
   "pinData": {},
   "staticData": null
