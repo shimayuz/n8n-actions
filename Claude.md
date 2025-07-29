@@ -4,18 +4,18 @@ This project implements Kiro-style Spec-Driven Development for Claude Code using
 
 ## CRITICAL n8n Workflow Settings Rules
 
-**NEVER FORGET**: In n8n workflow JSON files, the following settings fields MUST be strings, not booleans:
-- `saveExecutionProgress`: Must be "true" or "false" (string)
-- `saveDataSuccessExecution`: Must be "true" or "false" (string)  
-- `saveDataErrorExecution`: Must be "true" or "false" (string)
+**NEVER FORGET**: In n8n workflow JSON files, `saveDataErrorExecution` MUST be a string, not boolean:
+- `saveExecutionProgress`: boolean (true/false)
+- `saveDataSuccessExecution`: boolean (true/false)  
+- `saveDataErrorExecution`: Must be "true" or "false" (STRING!)
 
 Example:
 ```json
 "settings": {
   "executionOrder": "v1",
-  "saveExecutionProgress": "true",        // STRING, not boolean
-  "saveDataSuccessExecution": "true",     // STRING, not boolean
-  "saveDataErrorExecution": "true"        // STRING, not boolean
+  "saveExecutionProgress": true,          // boolean
+  "saveDataSuccessExecution": true,       // boolean
+  "saveDataErrorExecution": "true"        // STRING! (not boolean)
 }
 ```
 

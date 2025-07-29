@@ -157,8 +157,8 @@
     "executionOrder": "v1",
     "errorWorkflow": "",
     "timezone": "Asia/Tokyo",
-    "saveExecutionProgress": "true",
-    "saveDataSuccessExecution": "true",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": true,
     "saveDataErrorExecution": "true"
   },
   "tags": ["contact-form", "email", "slack", "automation"],
