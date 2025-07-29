@@ -1,0 +1,166 @@
+{
+  "name": "Contact Form with Auto Reply and Slack Notification",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "contact-form",
+        "formTitle": "お問い合わせフォーム",
+        "formDescription": "お問い合わせ内容をご記入ください。自動返信メールをお送りします。",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "お名前",
+              "fieldType": "text",
+              "requiredField": true,
+              "fieldOptions": {
+                "placeholder": "山田 太郎"
+              }
+            },
+            {
+              "fieldLabel": "メールアドレス",
+              "fieldType": "email",
+              "requiredField": true,
+              "fieldOptions": {
+                "placeholder": "example@email.com"
+              }
+            },
+            {
+              "fieldLabel": "件名",
+              "fieldType": "text",
+              "requiredField": true,
+              "fieldOptions": {
+                "placeholder": "お問い合わせの件名"
+              }
+            },
+            {
+              "fieldLabel": "お問い合わせ内容",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "fieldOptions": {
+                "rows": 5,
+                "placeholder": "お問い合わせ内容をご記入ください"
+              }
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "successMessage": "お問い合わせありがとうございました。自動返信メールをお送りしました。"
+            }
+          }
+        }
+      },
+      "name": "Contact Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "webhookId": "contact-form-webhook",
+      "notes": "お問い合わせフォームの受信トリガー。必要なフィールドを収集"
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@yourcompany.com",
+        "toEmail": "={{ $json['メールアドレス'] }}",
+        "subject": "【自動返信】お問い合わせを受け付けました",
+        "emailType": "html",
+        "htmlBody": "={{ `\n<html>\n<body>\n<p>${$json['お名前']} 様</p>\n\n<p>この度はお問い合わせいただき、誠にありがとうございます。</p>\n<p>以下の内容でお問い合わせを受け付けました。</p>\n\n<hr>\n<p><strong>件名:</strong> ${$json['件名']}</p>\n<p><strong>お問い合わせ内容:</strong></p>\n<p>${$json['お問い合わせ内容'].replace(/\\n/g, '<br>')}</p>\n<hr>\n\n<p>内容を確認の上、担当者より改めてご連絡させていただきます。</p>\n<p>今しばらくお待ちください。</p>\n\n<p>よろしくお願いいたします。</p>\n\n<p>※このメールは自動送信されています。</p>\n</body>\n</html>\n` }}",
+        "options": {}
+      },
+      "name": "Send Auto Reply Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [450, 200],
+      "id": "b2c3d4e5-f678-9012-bcde-f23456789012",
+      "credentials": {
+        "smtp": {
+          "id": "smtp-credentials-id"
+        }
+      },
+      "notes": "フォーム送信者への自動返信メール送信"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "#contact-notifications",
+        "text": "=== 新しいお問い合わせが届きました ===",
+        "otherOptions": {},
+        "attachments": [
+          {
+            "fallback": "新しいお問い合わせ",
+            "color": "#2EB886",
+            "pretext": "お問い合わせフォームから新しい問い合わせが届きました",
+            "fields": [
+              {
+                "title": "お名前",
+                "value": "={{ $json['お名前'] }}",
+                "short": true
+              },
+              {
+                "title": "メールアドレス",
+                "value": "={{ $json['メールアドレス'] }}",
+                "short": true
+              },
+              {
+                "title": "件名",
+                "value": "={{ $json['件名'] }}",
+                "short": false
+              },
+              {
+                "title": "お問い合わせ内容",
+                "value": "={{ $json['お問い合わせ内容'] }}",
+                "short": false
+              }
+            ],
+            "footer": "Contact Form",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ]
+      },
+      "name": "Send Slack Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [450, 400],
+      "id": "c3d4e5f6-7890-1234-cdef-345678901234",
+      "credentials": {
+        "slackApi": {
+          "id": "slack-api-credentials-id"
+        }
+      },
+      "notes": "Slackチャンネルへの通知送信。お問い合わせ内容の詳細を含む"
+    }
+  ],
+  "connections": {
+    "Contact Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send Auto Reply Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "versionId": "v1-contact-form-workflow",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "",
+    "timezone": "Asia/Tokyo",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": true,
+    "saveDataErrorExecution": true
+  },
+  "tags": ["contact-form", "email", "slack", "automation"],
+  "id": "contact-form-workflow-001"
+}
