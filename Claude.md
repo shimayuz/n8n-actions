@@ -4,10 +4,10 @@ This project implements Kiro-style Spec-Driven Development for Claude Code using
 
 ## CRITICAL n8n Workflow Settings Rules
 
-**NEVER FORGET**: In n8n workflow JSON files, `saveDataErrorExecution` MUST be a string, not boolean:
+**NEVER FORGET**: In n8n workflow JSON files, `saveDataErrorExecution` MUST be a string with specific values:
 - `saveExecutionProgress`: boolean (true/false)
 - `saveDataSuccessExecution`: boolean (true/false)  
-- `saveDataErrorExecution`: Must be "true" or "false" (STRING!)
+- `saveDataErrorExecution`: Must be "all" or "none" (STRING!)
 
 Example:
 ```json
@@ -15,7 +15,7 @@ Example:
   "executionOrder": "v1",
   "saveExecutionProgress": true,          // boolean
   "saveDataSuccessExecution": true,       // boolean
-  "saveDataErrorExecution": "true"        // STRING! (not boolean)
+  "saveDataErrorExecution": "all"         // STRING! Must be "all" or "none"
 }
 ```
 

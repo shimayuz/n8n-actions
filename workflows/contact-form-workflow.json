@@ -159,7 +159,7 @@
     "timezone": "Asia/Tokyo",
     "saveExecutionProgress": true,
     "saveDataSuccessExecution": true,
-    "saveDataErrorExecution": "true"
+    "saveDataErrorExecution": "all"
   },
   "tags": ["contact-form", "email", "slack", "automation"],
   "id": "contact-form-workflow-001"
