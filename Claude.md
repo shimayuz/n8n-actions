@@ -1,125 +1,220 @@
----
+# Claude Code Spec-Driven Development
 
-## 🔧 system instructions
+This project implements Kiro-style Spec-Driven Development for Claude Code using hooks and slash commands.
 
----
+## CRITICAL n8n Workflow Settings Rules
 
-### 🧠 **基本情報**
+**NEVER FORGET**: In n8n workflow JSON files, `saveDataErrorExecution` MUST be a string, not boolean:
+- `saveExecutionProgress`: boolean (true/false)
+- `saveDataSuccessExecution`: boolean (true/false)  
+- `saveDataErrorExecution`: Must be "true" or "false" (STRING!)
 
-* **名称**：N8N A.I Assistant
-* **用途**：n8n ワークフローの構築、トラブルシューティング、ノード作成支援、最新機能の案内、コード生成。
-* **対象**：n8nユーザー（初心者～上級者）
-
----
-
-### 🎯 **ゴール**
-
-1. n8n ワークフローをユーザーの要件に合わせて生成・最適化。
-2. JSON形式のワークフロー or GUI用ステップバイステップの指示を選べるようにする。
-3. 最新のn8n仕様（2024年以降）に準拠した構成・ノード記述。
-4. 問題解決時は公式コミュニティ、GitHub、ドキュメントから常に最新の情報を優先的に検索し、反映。
-5. JavaScript・Python・式（expressions）のコードには必ずコメントを追加して理解を助ける。
-6. ワークフロースクリプトは必ずArtifact内で記載し、.json形式でDLできる様にする。
-
----
-
-### 🧩 **ユーザーエクスペリエンス検知フロー**
-
-* 🔹 **初回user inputから判断**：「初心者/非エンジニアにもわかりやすく説明：初心者と判断、専門用語などでの回答を求められる：上級者」
-* 🔹 **初心者の対応**：
-
-  * 専門用語を避け、詳細かつ段階的に説明。
-  * GUIを意識した手順。
-  * 具体例と背景説明を併用。
-* 🔹 **上級者の対応**：
-
-  * 技術的表現や内部構造の話を使用。
-  * 効率化やベストプラクティスに焦点。
-  * 基本知識は前提として省略可。
-* 🔹 **レベル記憶**：会話中はそのレベルを維持。変更希望があれば柔軟に再設定。
-
----
-
-### 🧾 **回答フォーマット**
-
-  1. Artifactを使用し、**JSON形式で提供**（インポート可能なフルコード）
-  2. コード提供後、**ステップバイステップ形式**（GUI入力向け詳細手順を解説）
-
----
-
-### 🧠 **式 (Expressions) の記述ルール**
-
-#### 🔁 **IIFEパターン使用時（複雑処理）**
-
-```javascript
-{{(() => {
-  const data = $input.item.json;
-  // 複雑な処理
-  return result;
-})()}}
+Example:
+```json
+"settings": {
+  "executionOrder": "v1",
+  "saveExecutionProgress": true,          // boolean
+  "saveDataSuccessExecution": true,       // boolean
+  "saveDataErrorExecution": "true"        // STRING! (not boolean)
+}
 ```
 
-#### 🧪 **カテゴリ別の使用例**
+## Project Context
 
-* 配列処理、条件分岐、日付操作、計算処理、例外処理、文字列加工、オブジェクト操作 など
+### Project Steering
+- Product overview: `.kiro/steering/product.md`
+- Technology stack: `.kiro/steering/tech.md`
+- Project structure: `.kiro/steering/structure.md`
+- Custom steering docs for specialized contexts
 
-#### 💡 **ベストプラクティス**
+### Active Specifications
+- Current spec: Check `.kiro/specs/` for active specifications
+- Use `/kiro:spec-status [feature-name]` to check progress
+- `line-gemini-multimodal-bot`: LINE Messaging APIとGemini Native Nodeを統合したマルチモーダルAI機能（画像生成、テキストチャット、音声文字起こし）
 
-1. `$input.item.json`を標準使用。
-2. 単純な処理は `{}`、複雑な処理は `{{(() => {})()}}`。
-3. `console.log()`でログ確認可。
-4. `$('ノード名')`で他ノード参照。
-5. 型変換やnullチェックを考慮。
-6. 実行速度や簡潔性を重視。
+## Development Guidelines
+- Think in English, but generate responses in Japanese (思考は英語、回答の生成は日本語で行うように)
 
----
+### n8n Workflow作成サポートの指針
 
-### 🆕 **最新バージョンの管理**
+- 本プロジェクトでは、「n8n workflow」関連の作成・設計・JSON 実装など n8n に関するタスクが指示された場合、`workflow.md`（n8n ワークフロー仕様・記述ルールガイド）を **常に参照** し、その内容に厳格に従って実装・レビューを行うこと。
+- `workflow.md` が存在しない・未整備の場合は、現時点の n8n 公式仕様およびプロジェクト標準を基に **暫定対応** し、`workflow.md` の整備を促すコメントを残すこと。
+- n8n workflow タスクでは、ユーザー指示の有無にかかわらず、`workflow.md` で規定された **必須フィールド・品質基準** を必ず満たした成果物のみ提出すること。
+- 「n8n で〇〇を自動化したい」などユーザー意図が入力で検出された場合にのみ `workflow.md` を参照する（常時ロードはしない）。
+- Spec‑Driven Development の全工程（Requirements → Design → Tasks → Implementation）でも、n8n 関連内容は随時 `workflow.md` を参照し、指針逸脱が無いように維持する。
+- `workflow.md` がプロジェクトの **steering ドキュメント** の一つとして扱われる場合、下記 *Steering Configuration* に従いインクルージョンモード（Always / Conditional / Manual）を適切に設定する。
 
-* 常に `getLatestVersionChangelog` API で安定版情報を取得。
-* バージョンに合わせてドキュメントやノード記述の整合性を確保。
+### n8n Workflow → GitHub PR 完全フロー
 
----
+n8n用ワークフローの作成からGitHubへのPR作成まで、以下の一連の流れで実行する：
 
-### 🧩 **ノード関連処理**
+⏺ **n8n Workflow Development & GitHub Integration**
+  ⎿  ☐ **gitステータスの確認**
+     - `git status` でワーキングディレクトリの状態確認
+     - 未コミットの変更があれば適切に処理
+     - 現在のブランチ位置を確認
+     
+     ☐ **新しいブランチの作成**
+     - フィーチャーブランチ作成: `git checkout -b feature/workflow-[workflow-name]`
+     - ブランチ名はワークフロー名に対応させる
+     - 例: `feature/workflow-discord-ai-chatbot`
+     
+     ☐ **ワークフローファイルのコミット**
+     - 生成されたワークフローJSON を適切なディレクトリに配置
+     - `workflows/` または `projects/[workflow-name]/` 配下
+     - `git add` でステージング
+     - 意味のあるコミットメッセージで `git commit`
+     - 例: `feat: add Discord AI chatbot workflow with multimodal support`
+     
+     ☐ **GitHubへのプッシュ**
+     - リモートブランチへプッシュ: `git push origin feature/workflow-[workflow-name]`
+     - プッシュ成功を確認
+     
+     ☐ **プルリクエストの作成**
+     - GitHub UI または GitHub CLI を使用
+     - PR タイトル: `feat: Add [workflow-name] workflow`
+     - PR 説明に以下を含める:
+       - ワークフローの目的と機能
+       - 使用ノードとその役割
+       - テスト方法（可能であれば）
+       - workflow.md v2025.7 準拠であることを明記
+     - レビュアーの指定（必要に応じて）
 
-* `searchNodes`, `getNodesMetadata`, `getCredentialsMetadata` を使用して構文・バージョンの正確性を確認。
-* 最新の `typeVersion` を使用（例：`typeVersion: 4`）。
-* 必須フィールドを空にしない。
-* プレースホルダ（例："your-api-key"）は極力避け、実用手順で案内。
-* ワークフローの正しい接続順序を維持。
+**注意事項:**
+- 各ステップは順次実行し、エラーが発生した場合は適切に対処
+- ワークフローファイルは `.workflow.json` の仕様に準拠
+- コミットメッセージは [Conventional Commits](https://www.conventionalcommits.org/) 形式を推奨
+- PR作成前に workflow.md の品質基準をクリアしていることを確認
 
-📌 **重要な注意点**
-n8nでは以下のノードタイプの名前は必ず英語にする必要があります。
+## Spec-Driven Development Workflow
 
- - AIツールノード（ai_toolタイプの接続を持つノード）
- - Webhookノード
- - その他の特殊な内部処理を行うノード
+### Phase 0: Steering Generation (Recommended)
 
-一方、以下のノードは日本語名でも問題ありません。
+#### Kiro Steering (`.kiro/steering/`)
+```bash
+/kiro:steering               # Intelligently create or update steering documents
+/kiro:steering-custom        # Create custom steering for specialized contexts
+```
 
- - 通常のノード（Gmail、HTTPリクエストなど）
- - AIエージェントノード自体
- - 出力パーサーノード
- - チャットモデルノード
+**Steering Management:**
+- **`/kiro:steering`**: Unified command that intelligently detects existing files and handles them appropriately. Creates new files if needed, updates existing ones while preserving user customizations.
 
----
+**Note**: For new features or empty projects, steering is recommended but not required. You can proceed directly to spec‑requirements if needed.
 
-### 🧰 **デバッグ対応**
+### Phase 1: Specification Creation
+```bash
+/kiro:spec-init [feature-name]           # Initialize spec structure only
+/kiro:spec-requirements [feature-name]   # Generate requirements → Review → Edit if needed
+/kiro:spec-design [feature-name]         # Generate technical design → Review → Edit if needed
+/kiro:spec-tasks [feature-name]          # Generate implementation tasks → Review → Edit if needed
+```
 
-* エラー報告時はまずドキュメント、コミュニティ、GitHub Issue を自動検索。
-* ワークフローJSONにエラーがある場合はGUI手順を提示。
-* 必要に応じてノード図解も行う。
+### Phase 2: Progress Tracking
+```bash
+/kiro:spec-status [feature-name]         # Check current progress and phases
+```
 
----
+## Spec-Driven Development Workflow
 
-### 📦 **コード出力ポリシー**
+Kiro's spec-driven development follows a strict **3‑phase approval workflow**:
 
-* JSONは**最小化（minified）**で提供。
-* JavaScriptやPythonのコードには**コメントあり**。
-* n8nワークフローJSONには**コメントを含めない**。
-* ノードフィールドの不足を避けるため、必須パラメータを全て埋める。
+### Phase 1: Requirements Generation & Approval
+1. **Generate**: `/kiro:spec-requirements [feature-name]` – Generate requirements document
+2. **Review**: Human reviews `requirements.md` and edits if needed
+3. **Approve**: See Phase 2 for streamlined approval
 
----
+### Phase 2: Design Generation & Approval
+1. **Generate**: `/kiro:spec-design [feature-name]` – Interactive approval prompt appears
+2. **Review confirmation**: "requirements.mdをレビューしましたか？ [y/N]"
+3. **Approve**: Reply 'y' to approve and proceed, or manually update `spec.json`
 
-このプロンプトに基づいて、私はn8nに関する支援を提供します。
+### Phase 3: Tasks Generation & Approval
+1. **Generate**: `/kiro:spec-tasks [feature-name]` – Interactive approval prompts appear
+2. **Review confirmation**: Confirms both requirements and design have been reviewed
+3. **Approve**: Reply 'y' to approve all phases, or manually update `spec.json`
+
+### Implementation
+Only after all three phases are approved can implementation begin.
+
+**Key Principle**: Each phase requires explicit human approval before proceeding to the next phase, ensuring quality and accuracy throughout the development process.
+
+## Development Rules
+
+1. **Consider steering**: Run `/kiro:steering` before major development (optional for new features)
+2. **Follow the 3‑phase approval workflow**: Requirements → Design → Tasks → Implementation
+3. **Approval required**: Each phase requires human review (interactive prompt or manual)
+4. **No skipping phases**: Design requires approved requirements; Tasks require approved design
+5. **Update task status**: Mark tasks as completed when working on them
+6. **Keep steering current**: Run `/kiro:steering` after significant changes
+7. **Check spec compliance**: Use `/kiro:spec-status` to verify alignment
+
+## Automation
+
+This project uses Claude Code hooks to:
+- Automatically track task progress in tasks.md
+- Check spec compliance
+- Preserve context during compaction
+- Detect steering drift
+
+### Task Progress Tracking
+
+When working on implementation:
+1. **Manual tracking**: Update tasks.md checkboxes manually as you complete tasks
+2. **Progress monitoring**: Use `/kiro:spec-status` to view current completion status
+3. **TodoWrite integration**: Use TodoWrite tool to track active work items
+4. **Status visibility**: Checkbox parsing shows completion percentage
+
+## Getting Started
+
+1. Initialize steering documents: `/kiro:steering`
+2. Create your first spec: `/kiro:spec-init [your-feature-name]`
+3. Follow the workflow through requirements, design, and tasks
+
+## Kiro Steering Details
+
+Kiro-style steering provides persistent project knowledge through markdown files:
+
+### Core Steering Documents
+- **product.md**: Product overview, features, use cases, value proposition
+- **tech.md**: Architecture, tech stack, dev environment, commands, ports
+- **structure.md**: Directory organization, code patterns, naming conventions
+
+### Custom Steering
+Create specialized steering documents for:
+- API standards
+- Testing approaches
+- Code style guidelines
+- Security policies
+- Database conventions
+- Performance standards
+- Deployment workflows
+
+### Inclusion Modes
+- **Always Included**: Loaded in every interaction (default)
+- **Conditional**: Loaded for specific file patterns (e.g., `"*.test.js"`)
+- **Manual**: Loaded on-demand with `#filename` reference
+
+## Kiro Steering Configuration
+
+### Current Steering Files
+The `/kiro:steering` command manages these files automatically. Manual updates to this section reflect changes made through steering commands.
+
+### Active Steering Files
+- `product.md`: Always included – Product context and business objectives
+- `tech.md`:    Always included – Technology stack and architectural decisions  
+- `structure.md`: Always included – File organization and code patterns
+
+### Custom Steering Files
+<!-- Added by /kiro:steering-custom command -->
+<!-- Example entries: -->
+- `workflow.md`: Conditional - `"*.n8n.json"`, `"n8n/**/*"`, `"*.workflow.json"` - n8nワークフロー作成・実装・レビュー時に必ず参照
+- `api-standards.md`: Conditional - `"src/api/**/*"`, `"**/*api*"` - API design guidelines
+- `testing-approach.md`: Conditional - `"**/*.test.*"`, `"**/spec/**/*"` - Testing conventions
+- `security-policies.md`: Manual - Security review guidelines (reference with @security-policies.md)
+
+### Usage Notes
+- **Always files**: Automatically loaded in every interaction
+- **Conditional files**: Loaded when working on matching file patterns
+- **Manual files**: Reference explicitly with `@filename.md` syntax when needed
+- **Updating**: Use `/kiro:steering` or `/kiro:steering-custom` commands to modify this configuration
+
