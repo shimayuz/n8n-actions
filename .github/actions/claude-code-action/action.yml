@@ -1,0 +1,30 @@
+name: 'Claude Code Action'
+description: 'Run Claude Code in GitHub Actions with OAuth support'
+inputs:
+  use_oauth:
+    description: 'Use OAuth authentication'
+    required: false
+    default: 'true'
+  claude_access_token:
+    description: 'Claude access token'
+    required: true
+  claude_refresh_token:
+    description: 'Claude refresh token'
+    required: true
+  claude_expires_at:
+    description: 'Claude token expiration time'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Claude Code
+      shell: bash
+      run: |
+        echo "Setting up Claude Code with OAuth..."
+        echo "Access Token: ${{ inputs.claude_access_token }}"
+        echo "Refresh Token: ${{ inputs.claude_refresh_token }}"
+        echo "Expires At: ${{ inputs.claude_expires_at }}"
+        
+        # TODO: ここにClaude Codeの実際の実行ロジックを追加
+        echo "Claude Code action executed successfully" 

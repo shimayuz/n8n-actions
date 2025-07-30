@@ -1,0 +1,233 @@
+{
+  "name": "Discord Chatbot with AI",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "getAll",
+        "guildId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Select a Server"
+        },
+        "channelId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Select a Channel"
+        },
+        "limit": 10,
+        "returnAll": false
+      },
+      "id": "2",
+      "name": "Discord - Get Messages",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "processedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3",
+      "name": "Set - Process Messages",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.author.bot }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "2",
+              "leftValue": "={{ DateTime.fromISO($json.timestamp) > DateTime.now().minus({ seconds: 35 }) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "4",
+      "name": "If - Filter New Messages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        }
+      },
+      "id": "5",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [1050, 200],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'あなたは「（仮）デジタルソリューション部」のDiscordサーバーで活動する親切なAIアシスタントです。\\n\\nユーザーメッセージ: ' + $json.content + '\\nユーザー名: ' + $json.author.username + '\\n\\n自然で親しみやすい日本語で応答してください。技術的な質問にも対応できます。絵文字も適度に使って親しみやすさを演出してください。' }}",
+        "hasOutputParser": false
+      },
+      "id": "6",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "botToken",
+        "resource": "message",
+        "operation": "send",
+        "guildId": {
+          "__rl": true,
+          "value": "={{ $node['Discord - Get Messages'].json.guildId }}",
+          "mode": "id"
+        },
+        "channelId": {
+          "__rl": true,
+          "value": "={{ $node['Discord - Get Messages'].json.channelId }}",
+          "mode": "id"
+        },
+        "message": "={{ '<@' + $node['If - Filter New Messages'].json.author.id + '> ' + $json.output }}",
+        "options": {}
+      },
+      "id": "7",
+      "name": "Discord - Send Reply",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1250, 300],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Discord - Get Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord - Get Messages": {
+      "main": [
+        [
+          {
+            "node": "Set - Process Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Process Messages": {
+      "main": [
+        [
+          {
+            "node": "If - Filter New Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Filter New Messages": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Discord - Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
+EOF < /dev/null

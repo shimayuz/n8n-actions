@@ -1,0 +1,23 @@
+{
+  "architecture": "polling_based",
+  "reasoning": "Discordからの直接Webhook受信は標準n8nノードでは非対応のため、定期ポーリング方式を採用",
+  "components": [
+    "Schedule Trigger（30秒間隔）",
+    "Discord Node（メッセージ取得）",
+    "メッセージフィルタリング（新規メッセージのみ）",
+    "AI Agent（LangChain + OpenAI）",
+    "Discord Node（応答送信）"
+  ],
+  "data_flow": [
+    "定期的にDiscordチャンネルをチェック",
+    "新着メッセージを検出",
+    "ボットの既送信メッセージを除外",
+    "AIで応答生成",
+    "Discordに送信"
+  ],
+  "required_credentials": [
+    "Discord Bot Token",
+    "OpenAI API Key"
+  ]
+}
+EOF < /dev/null

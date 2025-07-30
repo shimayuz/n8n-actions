@@ -1,0 +1,424 @@
+{
+  "name": "LINE Gemini Multimodal Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "line-gemini-bot",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "LINE Webhook受信",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-01",
+      "webhookId": "line-gemini-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "const crypto = require('crypto');\nconst channelSecret = $credentials.lineChannelSecret;\nconst body = JSON.stringify($input.item.json.body);\nconst signature = $input.item.json.headers['x-line-signature'];\n\nif (!signature) {\n  throw new Error('X-Line-Signature header is missing');\n}\n\nconst hash = crypto\n  .createHmac('SHA256', channelSecret)\n  .update(body)\n  .digest('base64');\n\nif (hash !== signature) {\n  throw new Error('Invalid signature');\n}\n\nreturn [{json: $input.item.json.body}];"
+      },
+      "name": "署名検証",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "function-verify-01",
+      "continueOnFail": false,
+      "credentials": {
+        "lineCredentials": {
+          "id": "line-credentials-id"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "messageType",
+              "value": "={{ $json.events[0].message.type }}"
+            },
+            {
+              "name": "messageId",
+              "value": "={{ $json.events[0].message.id }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.events[0].message.text || '' }}"
+            },
+            {
+              "name": "replyToken",
+              "value": "={{ $json.events[0].replyToken }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.events[0].source.userId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "リクエスト解析",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "id": "set-parse-01"
+    },
+    {
+      "parameters": {
+        "functionCode": "// レート制限チェック\nconst userId = $json.userId;\nconst now = Date.now();\nconst userRequests = $getWorkflowStaticData('userRequests') || {};\n\n// ユーザーのリクエスト履歴を初期化または取得\nif (!userRequests[userId]) {\n  userRequests[userId] = [];\n}\n\n// 1分以内のリクエストのみを保持\nconst oneMinuteAgo = now - 60000;\nuserRequests[userId] = userRequests[userId].filter(timestamp => timestamp > oneMinuteAgo);\n\n// 現在のリクエストを追加\nuserRequests[userId].push(now);\n\n// 1分間に10回以上のリクエストをチェック\nif (userRequests[userId].length > 10) {\n  // リクエスト履歴を保存\n  $setWorkflowStaticData('userRequests', userRequests);\n  \n  return [{\n    json: {\n      ...($json),\n      rateLimited: true,\n      errorMessage: 'しばらくお待ちください'\n    }\n  }];\n}\n\n// リクエスト履歴を保存\n$setWorkflowStaticData('userRequests', userRequests);\n\n// 正常に処理を続行\nreturn [{json: $json}];"
+      },
+      "name": "レート制限チェック",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "id": "function-rate-limit-01",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.rateLimited }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "レート制限判定",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [1050, 300],
+      "id": "if-rate-limit-01"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.messageType }}",
+              "operation": "equals",
+              "value2": "text"
+            }
+          ]
+        },
+        "combineOperation": "all"
+      },
+      "name": "メッセージタイプ判定",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [1250, 300],
+      "id": "if-message-type-01"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.messageType }}",
+              "operation": "equals", 
+              "value2": "audio"
+            }
+          ]
+        }
+      },
+      "name": "音声メッセージ判定",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [1450, 500],
+      "id": "if-audio-01"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.text }}",
+              "operation": "startsWith",
+              "value2": "画像生成:"
+            }
+          ]
+        }
+      },
+      "name": "画像生成判定",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [1450, 200],
+      "id": "if-image-gen-01"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "responseText",
+              "value": "このメッセージタイプはサポートされていません"
+            }
+          ]
+        }
+      },
+      "name": "サポート外メッセージ",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1450, 700],
+      "id": "set-unsupported-01"
+    },
+    {
+      "parameters": {
+        "functionCode": "// エラーハンドラー\nconst error = $input.item.error;\nconst errorType = error?.name || 'UnknownError';\nconst errorMessage = error?.message || 'エラーが発生しました';\n\n// エラーログ記録\nconst logEntry = {\n  timestamp: new Date().toISOString(),\n  errorType,\n  errorMessage,\n  nodeId: $node.name,\n  workflowId: $workflow.id,\n  executionId: $execution.id\n};\n\n// ユーザー向けメッセージ生成\nfunction getErrorMessage(type) {\n  const messages = {\n    'InvalidSignature': '不正なリクエストです',\n    'GeminiAPIError': '申し訳ございません。現在AIサービスが利用できません',\n    'RateLimitError': 'しばらくお待ちください',\n    'AudioTooLarge': '音声ファイルが大きすぎます。5MB以下のファイルを送信してください',\n    'UnsupportedMessageType': 'このメッセージタイプはサポートされていません'\n  };\n  return messages[type] || '申し訳ございません。エラーが発生しました';\n}\n\nreturn [{\n  json: {\n    log: logEntry,\n    responseText: getErrorMessage(errorType),\n    replyToken: $json.replyToken || '',\n    error: true\n  }\n}];"
+      },
+      "name": "エラーハンドラー",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2850, 700],
+      "id": "function-error-handler-01",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://api.line.me/v2/bot/message/reply",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "lineNotifyOAuth2Api",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $credentials.lineChannelAccessToken }}"
+            }
+          ]
+        },
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "replyToken",
+              "value": "={{ $json.replyToken }}"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [\n  {\n    \"type\": \"text\",\n    \"text\": $json.responseText || $json.text || \"メッセージを受信しました\"\n  }\n] }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "LINE返信",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3050, 300],
+      "id": "http-line-reply-01",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "continueOnFail": true,
+      "credentials": {
+        "lineCredentials": {
+          "id": "line-credentials-id"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ JSON.stringify({status: 'ok'}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Webhook応答",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3250, 300],
+      "id": "respond-webhook-01"
+    }
+  ],
+  "connections": {
+    "LINE Webhook受信": {
+      "main": [
+        [
+          {
+            "node": "署名検証",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "署名検証": {
+      "main": [
+        [
+          {
+            "node": "リクエスト解析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "エラーハンドラー",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "リクエスト解析": {
+      "main": [
+        [
+          {
+            "node": "レート制限チェック",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "レート制限チェック": {
+      "main": [
+        [
+          {
+            "node": "レート制限判定",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "レート制限判定": {
+      "main": [
+        [
+          {
+            "node": "LINE返信",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "メッセージタイプ判定",
+            "type": "main", 
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "メッセージタイプ判定": {
+      "main": [
+        [
+          {
+            "node": "画像生成判定",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "音声メッセージ判定",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "音声メッセージ判定": {
+      "main": [
+        [
+          {
+            "node": "サポート外メッセージ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "サポート外メッセージ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "画像生成判定": {
+      "main": [
+        [
+          {
+            "node": "LINE返信",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "LINE返信",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "サポート外メッセージ": {
+      "main": [
+        [
+          {
+            "node": "LINE返信",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "エラーハンドラー": {
+      "main": [
+        [
+          {
+            "node": "LINE返信",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LINE返信": {
+      "main": [
+        [
+          {
+            "node": "Webhook応答",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "versionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": true,
+    "saveDataErrorExecution": true,
+    "executionTimeout": 60
+  },
+  "id": "line-gemini-bot-workflow",
+  "tags": []
+}
