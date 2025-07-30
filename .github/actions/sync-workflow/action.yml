@@ -1,0 +1,226 @@
+name: 'Sync Workflow to n8n'
+description: 'Syncs a workflow JSON file to n8n instance via API'
+author: 'n8n-workflows'
+
+inputs:
+  workflow-file:
+    description: 'Path to the workflow JSON file to sync'
+    required: true
+  n8n-api-url:
+    description: 'n8n API base URL'
+    required: true
+  n8n-api-key:
+    description: 'n8n API key for authentication'
+    required: true
+  update-local-file:
+    description: 'Update local file with workflow ID from n8n'
+    required: false
+    default: 'true'
+  remove-credentials:
+    description: 'Remove credential references before sync'
+    required: false
+    default: 'true'
+  activate-workflow:
+    description: 'Activate the workflow after sync'
+    required: false
+    default: 'false'
+
+outputs:
+  workflow-id:
+    description: 'ID of the synced workflow in n8n'
+    value: ${{ steps.sync.outputs.workflow_id }}
+  sync-status:
+    description: 'Status of the sync operation (success/failure)'
+    value: ${{ steps.sync.outputs.status }}
+  workflow-url:
+    description: 'URL to access the workflow in n8n'
+    value: ${{ steps.sync.outputs.workflow_url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate workflow file
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.workflow-file }}" ]; then
+          echo "❌ Error: Workflow file not found: ${{ inputs.workflow-file }}"
+          exit 1
+        fi
+        
+        # Validate JSON
+        if ! jq . "${{ inputs.workflow-file }}" > /dev/null 2>&1; then
+          echo "❌ Error: Invalid JSON in workflow file"
+          exit 1
+        fi
+        
+        echo "✅ Workflow file validated"
+
+    - name: Prepare workflow for sync
+      id: prepare
+      shell: bash
+      run: |
+        # Read workflow
+        WORKFLOW_JSON=$(cat "${{ inputs.workflow-file }}")
+        
+        # Extract metadata
+        WORKFLOW_NAME=$(echo "$WORKFLOW_JSON" | jq -r '.name // "Unnamed Workflow"')
+        WORKFLOW_ID=$(echo "$WORKFLOW_JSON" | jq -r '.id // empty')
+        
+        echo "workflow_name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+        echo "existing_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+        
+        # Remove credentials if requested
+        if [ "${{ inputs.remove-credentials }}" = "true" ]; then
+          echo "🔒 Removing credential references..."
+          WORKFLOW_JSON=$(echo "$WORKFLOW_JSON" | jq 'walk(if type == "object" and has("credentials") then del(.credentials) else . end)')
+        fi
+        
+        # Save prepared workflow
+        echo "$WORKFLOW_JSON" > prepared_workflow.json
+        
+        echo "📋 Workflow prepared for sync: $WORKFLOW_NAME"
+
+    - name: Check if workflow exists
+      id: check-exists
+      shell: bash
+      run: |
+        if [ -n "${{ steps.prepare.outputs.existing_id }}" ]; then
+          echo "Checking if workflow exists with ID: ${{ steps.prepare.outputs.existing_id }}"
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X GET \
+            "${{ inputs.n8n-api-url }}/workflows/${{ steps.prepare.outputs.existing_id }}" \
+            -H "X-N8N-API-KEY: ${{ inputs.n8n-api-key }}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Workflow exists in n8n"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Workflow does not exist in n8n (will create new)"
+          fi
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No workflow ID found (will create new)"
+        fi
+
+    - name: Sync workflow to n8n
+      id: sync
+      shell: bash
+      run: |
+        WORKFLOW_JSON=$(cat prepared_workflow.json)
+        
+        if [ "${{ steps.check-exists.outputs.exists }}" = "true" ]; then
+          # Update existing workflow
+          echo "📝 Updating existing workflow..."
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X PUT \
+            "${{ inputs.n8n-api-url }}/workflows/${{ steps.prepare.outputs.existing_id }}" \
+            -H "X-N8N-API-KEY: ${{ inputs.n8n-api-key }}" \
+            -H "Content-Type: application/json" \
+            -d "$WORKFLOW_JSON")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Workflow updated successfully"
+            WORKFLOW_ID=$(echo "$BODY" | jq -r '.id')
+            echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "operation=update" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to update workflow"
+            echo "Response: $BODY"
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+        else
+          # Create new workflow
+          echo "🆕 Creating new workflow..."
+          
+          # Remove ID from JSON for new creation
+          WORKFLOW_JSON=$(echo "$WORKFLOW_JSON" | jq 'del(.id)')
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            "${{ inputs.n8n-api-url }}/workflows" \
+            -H "X-N8N-API-KEY: ${{ inputs.n8n-api-key }}" \
+            -H "Content-Type: application/json" \
+            -d "$WORKFLOW_JSON")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+            echo "✅ Workflow created successfully"
+            WORKFLOW_ID=$(echo "$BODY" | jq -r '.id')
+            echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "operation=create" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to create workflow"
+            echo "Response: $BODY"
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+        fi
+        
+        # Generate workflow URL
+        N8N_BASE_URL=$(echo "${{ inputs.n8n-api-url }}" | sed 's|/api/v[0-9]*||')
+        WORKFLOW_URL="${N8N_BASE_URL}/workflow/${WORKFLOW_ID}"
+        echo "workflow_url=$WORKFLOW_URL" >> $GITHUB_OUTPUT
+
+    - name: Activate workflow
+      if: inputs.activate-workflow == 'true' && steps.sync.outputs.status == 'success'
+      shell: bash
+      run: |
+        echo "🚀 Activating workflow..."
+        
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X PATCH \
+          "${{ inputs.n8n-api-url }}/workflows/${{ steps.sync.outputs.workflow_id }}" \
+          -H "X-N8N-API-KEY: ${{ inputs.n8n-api-key }}" \
+          -H "Content-Type: application/json" \
+          -d '{"active": true}')
+        
+        HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+        
+        if [ "$HTTP_CODE" = "200" ]; then
+          echo "✅ Workflow activated"
+        else
+          echo "⚠️  Failed to activate workflow (manual activation required)"
+        fi
+
+    - name: Update local file with workflow ID
+      if: inputs.update-local-file == 'true' && steps.sync.outputs.status == 'success' && steps.sync.outputs.operation == 'create'
+      shell: bash
+      run: |
+        echo "📝 Updating local file with workflow ID..."
+        
+        # Read original workflow
+        ORIGINAL_WORKFLOW=$(cat "${{ inputs.workflow-file }}")
+        
+        # Update with new ID
+        UPDATED_WORKFLOW=$(echo "$ORIGINAL_WORKFLOW" | jq --arg id "${{ steps.sync.outputs.workflow_id }}" '.id = $id')
+        
+        # Write back to file
+        echo "$UPDATED_WORKFLOW" > "${{ inputs.workflow-file }}"
+        
+        echo "✅ Local file updated with workflow ID: ${{ steps.sync.outputs.workflow_id }}"
+
+    - name: Output sync summary
+      if: always()
+      shell: bash
+      run: |
+        echo "## 📊 Sync Summary"
+        echo "- Workflow: ${{ steps.prepare.outputs.workflow_name }}"
+        echo "- Operation: ${{ steps.sync.outputs.operation || 'none' }}"
+        echo "- Status: ${{ steps.sync.outputs.status || 'unknown' }}"
+        if [ "${{ steps.sync.outputs.status }}" = "success" ]; then
+          echo "- Workflow ID: ${{ steps.sync.outputs.workflow_id }}"
+          echo "- URL: ${{ steps.sync.outputs.workflow_url }}"
+        fi

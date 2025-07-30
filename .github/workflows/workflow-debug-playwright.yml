@@ -1,0 +1,421 @@
+name: Debug n8n Workflow with Playwright
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_file:
+        description: 'Path to workflow file to debug (e.g., workflows/discord-chatbot.json)'
+        required: true
+        type: string
+      n8n_instance_url:
+        description: 'n8n instance URL for testing (optional, uses default if not provided)'
+        required: false
+        type: string
+      debug_mode:
+        description: 'Debug mode level'
+        required: false
+        type: choice
+        options:
+          - 'basic'
+          - 'detailed'
+          - 'screenshot'
+        default: 'basic'
+      test_execution:
+        description: 'Test workflow execution in n8n'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  playwright-debug:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          # Install Playwright dependencies
+          npm install playwright @playwright/test
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Validate workflow file exists
+        id: validate-file
+        run: |
+          if [ ! -f "${{ github.event.inputs.workflow_file }}" ]; then
+            echo "❌ Error: Workflow file not found: ${{ github.event.inputs.workflow_file }}"
+            exit 1
+          fi
+          
+          # Extract workflow info
+          WORKFLOW_NAME=$(jq -r '.name // "Unknown"' "${{ github.event.inputs.workflow_file }}")
+          echo "workflow_name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create Playwright debug script
+        run: |
+          cat > playwright-debug-workflow.js << 'EOF'
+          const { chromium } = require('playwright');
+          const fs = require('fs').promises;
+          const path = require('path');
+
+          async function debugWorkflow() {
+            const workflowPath = process.argv[2];
+            const n8nUrl = process.argv[3] || process.env.N8N_URL || 'http://localhost:5678';
+            const debugMode = process.argv[4] || 'basic';
+            const testExecution = process.argv[5] === 'true';
+            
+            console.log('🔍 Starting Playwright n8n Workflow Debug');
+            console.log(`📄 Workflow: ${workflowPath}`);
+            console.log(`🌐 n8n URL: ${n8nUrl}`);
+            console.log(`🐛 Debug Mode: ${debugMode}`);
+            
+            // Read workflow
+            const workflowContent = await fs.readFile(workflowPath, 'utf8');
+            const workflow = JSON.parse(workflowContent);
+            
+            // Create reports directory
+            const reportsDir = 'playwright-reports';
+            await fs.mkdir(reportsDir, { recursive: true });
+            
+            const browser = await chromium.launch({
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            
+            const context = await browser.newContext({
+              viewport: { width: 1920, height: 1080 },
+              ignoreHTTPSErrors: true
+            });
+            
+            const page = await context.newPage();
+            
+            // Debug report
+            let debugReport = {
+              timestamp: new Date().toISOString(),
+              workflow: {
+                name: workflow.name,
+                nodeCount: workflow.nodes?.length || 0,
+                file: workflowPath
+              },
+              checks: [],
+              errors: [],
+              warnings: [],
+              screenshots: []
+            };
+            
+            try {
+              // Check n8n accessibility
+              console.log('\n📡 Checking n8n instance accessibility...');
+              try {
+                await page.goto(n8nUrl, { waitUntil: 'networkidle', timeout: 30000 });
+                debugReport.checks.push({
+                  name: 'n8n Instance Accessible',
+                  status: 'passed',
+                  message: `Successfully connected to ${n8nUrl}`
+                });
+                
+                if (debugMode === 'screenshot' || debugMode === 'detailed') {
+                  const screenshotPath = path.join(reportsDir, 'n8n-home.png');
+                  await page.screenshot({ path: screenshotPath, fullPage: true });
+                  debugReport.screenshots.push(screenshotPath);
+                }
+              } catch (error) {
+                debugReport.errors.push({
+                  type: 'connection',
+                  message: `Failed to connect to n8n: ${error.message}`,
+                  suggestion: 'Check if n8n instance is running and accessible'
+                });
+                throw error;
+              }
+              
+              // Navigate to workflows page
+              console.log('\n📋 Navigating to workflows page...');
+              await page.goto(`${n8nUrl}/workflows`, { waitUntil: 'networkidle' });
+              
+              // Check for import functionality
+              console.log('\n📥 Checking import functionality...');
+              const importButton = await page.locator('button:has-text("Import"), [data-test-id="import-workflow"]').first();
+              
+              if (await importButton.isVisible()) {
+                debugReport.checks.push({
+                  name: 'Import Button Available',
+                  status: 'passed',
+                  message: 'Workflow import functionality is accessible'
+                });
+                
+                if (testExecution) {
+                  // Simulate import process
+                  console.log('\n🔄 Testing workflow import...');
+                  await importButton.click();
+                  
+                  // Wait for import dialog
+                  await page.waitForSelector('[data-test-id="import-dialog"], .modal', { timeout: 5000 });
+                  
+                  // Check for JSON input field
+                  const jsonInput = await page.locator('textarea, [data-test-id="workflow-json-input"]').first();
+                  if (await jsonInput.isVisible()) {
+                    await jsonInput.fill(workflowContent);
+                    debugReport.checks.push({
+                      name: 'Workflow JSON Input',
+                      status: 'passed',
+                      message: 'Successfully filled workflow JSON'
+                    });
+                  }
+                  
+                  if (debugMode === 'screenshot' || debugMode === 'detailed') {
+                    const screenshotPath = path.join(reportsDir, 'import-dialog.png');
+                    await page.screenshot({ path: screenshotPath });
+                    debugReport.screenshots.push(screenshotPath);
+                  }
+                }
+              } else {
+                debugReport.warnings.push({
+                  type: 'ui',
+                  message: 'Import button not found',
+                  suggestion: 'UI might have changed or user might not have permissions'
+                });
+              }
+              
+              // Validate workflow structure in browser
+              console.log('\n🔍 Validating workflow structure...');
+              const validationResult = await page.evaluate((workflowJson) => {
+                try {
+                  const wf = JSON.parse(workflowJson);
+                  const issues = [];
+                  
+                  // Check for duplicate node names
+                  const nodeNames = new Set();
+                  wf.nodes?.forEach(node => {
+                    if (nodeNames.has(node.name)) {
+                      issues.push(`Duplicate node name: ${node.name}`);
+                    }
+                    nodeNames.add(node.name);
+                  });
+                  
+                  // Check connections
+                  const nodeNameSet = new Set(wf.nodes?.map(n => n.name) || []);
+                  Object.keys(wf.connections || {}).forEach(connName => {
+                    if (!nodeNameSet.has(connName)) {
+                      issues.push(`Connection references non-existent node: ${connName}`);
+                    }
+                  });
+                  
+                  return { valid: issues.length === 0, issues };
+                } catch (e) {
+                  return { valid: false, issues: [e.message] };
+                }
+              }, workflowContent);
+              
+              if (validationResult.valid) {
+                debugReport.checks.push({
+                  name: 'Workflow Structure Validation',
+                  status: 'passed',
+                  message: 'Workflow structure is valid'
+                });
+              } else {
+                validationResult.issues.forEach(issue => {
+                  debugReport.errors.push({
+                    type: 'validation',
+                    message: issue,
+                    suggestion: 'Fix the workflow structure before importing'
+                  });
+                });
+              }
+              
+              // Check for common n8n UI elements
+              if (debugMode === 'detailed' || debugMode === 'screenshot') {
+                console.log('\n🎨 Checking n8n UI elements...');
+                
+                const uiElements = [
+                  { selector: '[data-test-id="workflow-canvas"], .workflow-canvas', name: 'Workflow Canvas' },
+                  { selector: '[data-test-id="node-creator"], .node-creator', name: 'Node Creator' },
+                  { selector: '[data-test-id="workflow-settings"], .workflow-settings', name: 'Workflow Settings' }
+                ];
+                
+                for (const element of uiElements) {
+                  try {
+                    await page.locator(element.selector).first().waitFor({ 
+                      state: 'visible', 
+                      timeout: 3000 
+                    });
+                    debugReport.checks.push({
+                      name: `UI Element: ${element.name}`,
+                      status: 'passed',
+                      message: `${element.name} is visible`
+                    });
+                  } catch {
+                    debugReport.warnings.push({
+                      type: 'ui',
+                      message: `${element.name} not found`,
+                      suggestion: 'This might be normal depending on the current view'
+                    });
+                  }
+                }
+              }
+              
+              // Performance check
+              console.log('\n⚡ Checking performance metrics...');
+              const metrics = await page.evaluate(() => {
+                const navigation = performance.getEntriesByType('navigation')[0];
+                return {
+                  loadTime: navigation.loadEventEnd - navigation.loadEventStart,
+                  domReady: navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart,
+                  resourceCount: performance.getEntriesByType('resource').length
+                };
+              });
+              
+              debugReport.checks.push({
+                name: 'Performance Metrics',
+                status: metrics.loadTime < 3000 ? 'passed' : 'warning',
+                message: `Page load time: ${metrics.loadTime}ms, DOM ready: ${metrics.domReady}ms, Resources: ${metrics.resourceCount}`
+              });
+              
+              if (metrics.loadTime > 3000) {
+                debugReport.warnings.push({
+                  type: 'performance',
+                  message: `Slow page load time: ${metrics.loadTime}ms`,
+                  suggestion: 'Consider optimizing n8n instance or checking network latency'
+                });
+              }
+              
+            } catch (error) {
+              console.error('❌ Debug error:', error);
+              debugReport.errors.push({
+                type: 'runtime',
+                message: error.message,
+                stack: error.stack
+              });
+            } finally {
+              await browser.close();
+            }
+            
+            // Generate report
+            const reportPath = path.join(reportsDir, 'debug-report.json');
+            await fs.writeFile(reportPath, JSON.stringify(debugReport, null, 2));
+            
+            // Generate markdown summary
+            const summaryPath = path.join(reportsDir, 'debug-summary.md');
+            const summary = generateMarkdownSummary(debugReport);
+            await fs.writeFile(summaryPath, summary);
+            
+            console.log('\n📊 Debug Report Generated');
+            console.log(`   JSON: ${reportPath}`);
+            console.log(`   Summary: ${summaryPath}`);
+            
+            return debugReport;
+          }
+
+          function generateMarkdownSummary(report) {
+            let md = `# 🔍 n8n Workflow Debug Report\n\n`;
+            md += `**Timestamp**: ${report.timestamp}\n`;
+            md += `**Workflow**: ${report.workflow.name} (${report.workflow.nodeCount} nodes)\n`;
+            md += `**File**: ${report.workflow.file}\n\n`;
+            
+            md += `## 📊 Summary\n\n`;
+            md += `- ✅ Passed Checks: ${report.checks.filter(c => c.status === 'passed').length}\n`;
+            md += `- ⚠️ Warnings: ${report.warnings.length}\n`;
+            md += `- ❌ Errors: ${report.errors.length}\n\n`;
+            
+            if (report.checks.length > 0) {
+              md += `## ✅ Checks Performed\n\n`;
+              report.checks.forEach(check => {
+                const icon = check.status === 'passed' ? '✅' : '⚠️';
+                md += `- ${icon} **${check.name}**: ${check.message}\n`;
+              });
+              md += '\n';
+            }
+            
+            if (report.warnings.length > 0) {
+              md += `## ⚠️ Warnings\n\n`;
+              report.warnings.forEach(warning => {
+                md += `### ${warning.type}\n`;
+                md += `- **Message**: ${warning.message}\n`;
+                md += `- **Suggestion**: ${warning.suggestion}\n\n`;
+              });
+            }
+            
+            if (report.errors.length > 0) {
+              md += `## ❌ Errors\n\n`;
+              report.errors.forEach(error => {
+                md += `### ${error.type}\n`;
+                md += `- **Message**: ${error.message}\n`;
+                if (error.suggestion) {
+                  md += `- **Suggestion**: ${error.suggestion}\n`;
+                }
+                md += '\n';
+              });
+            }
+            
+            if (report.screenshots.length > 0) {
+              md += `## 📸 Screenshots\n\n`;
+              report.screenshots.forEach(screenshot => {
+                md += `- ${screenshot}\n`;
+              });
+            }
+            
+            return md;
+          }
+
+          // Run debug
+          debugWorkflow().catch(console.error);
+          EOF
+
+      - name: Run Playwright debug
+        env:
+          N8N_URL: ${{ github.event.inputs.n8n_instance_url || secrets.N8N_URL || 'http://localhost:5678' }}
+        run: |
+          node playwright-debug-workflow.js \
+            "${{ github.event.inputs.workflow_file }}" \
+            "$N8N_URL" \
+            "${{ github.event.inputs.debug_mode }}" \
+            "${{ github.event.inputs.test_execution }}"
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-debug-report
+          path: playwright-reports/
+          retention-days: 7
+
+      - name: Create debug summary
+        if: always()
+        run: |
+          if [ -f "playwright-reports/debug-summary.md" ]; then
+            cat playwright-reports/debug-summary.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ No debug summary generated" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR (if triggered from PR)
+        if: github.event.pull_request
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('playwright-reports/debug-summary.md')) {
+              const summary = fs.readFileSync('playwright-reports/debug-summary.md', 'utf8');
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: summary
+              });
+            }

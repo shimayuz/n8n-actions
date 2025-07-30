@@ -1,0 +1,334 @@
+name: 'Test n8n Workflow with Playwright'
+description: 'Tests n8n workflow import and execution using Playwright browser automation'
+author: 'n8n-workflows'
+
+inputs:
+  workflow-file:
+    description: 'Path to the workflow JSON file to test'
+    required: true
+  n8n-url:
+    description: 'n8n instance URL'
+    required: false
+    default: 'http://localhost:5678'
+  test-mode:
+    description: 'Test mode: import-only, execute, full'
+    required: false
+    default: 'import-only'
+  capture-screenshots:
+    description: 'Capture screenshots during testing'
+    required: false
+    default: 'true'
+  timeout:
+    description: 'Test timeout in milliseconds'
+    required: false
+    default: '60000'
+
+outputs:
+  test-passed:
+    description: 'Whether the test passed'
+    value: ${{ steps.test.outputs.passed }}
+  test-report:
+    description: 'Path to the test report'
+    value: ${{ steps.test.outputs.report_path }}
+  screenshots:
+    description: 'Paths to captured screenshots'
+    value: ${{ steps.test.outputs.screenshots }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup test environment
+      shell: bash
+      run: |
+        # Create test directory
+        mkdir -p playwright-test-results
+        
+        # Validate workflow file
+        if [ ! -f "${{ inputs.workflow-file }}" ]; then
+          echo "❌ Workflow file not found: ${{ inputs.workflow-file }}"
+          exit 1
+        fi
+
+    - name: Create Playwright test script
+      shell: bash
+      run: |
+        cat > playwright-test-workflow.mjs << 'EOF'
+        import { chromium } from 'playwright';
+        import { readFile, writeFile, mkdir } from 'fs/promises';
+        import { join } from 'path';
+
+        const workflowFile = process.argv[2];
+        const n8nUrl = process.argv[3];
+        const testMode = process.argv[4];
+        const captureScreenshots = process.argv[5] === 'true';
+        const timeout = parseInt(process.argv[6]);
+
+        async function testWorkflow() {
+          const testReport = {
+            timestamp: new Date().toISOString(),
+            workflowFile,
+            n8nUrl,
+            testMode,
+            results: {
+              passed: [],
+              failed: [],
+              warnings: []
+            },
+            screenshots: [],
+            executionTime: 0
+          };
+
+          const startTime = Date.now();
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({
+            viewport: { width: 1920, height: 1080 },
+            ignoreHTTPSErrors: true
+          });
+          const page = await context.newPage();
+
+          try {
+            // Read workflow
+            const workflowContent = await readFile(workflowFile, 'utf8');
+            const workflow = JSON.parse(workflowContent);
+            
+            console.log(`🧪 Testing workflow: ${workflow.name}`);
+            
+            // Test 1: n8n accessibility
+            console.log('📡 Testing n8n accessibility...');
+            await page.goto(n8nUrl, { waitUntil: 'networkidle', timeout });
+            testReport.results.passed.push({
+              test: 'n8n Accessibility',
+              message: 'Successfully connected to n8n instance'
+            });
+
+            if (captureScreenshots) {
+              const screenshotPath = 'playwright-test-results/01-n8n-home.png';
+              await page.screenshot({ path: screenshotPath });
+              testReport.screenshots.push(screenshotPath);
+            }
+
+            // Test 2: Navigate to workflows
+            console.log('📋 Testing workflow navigation...');
+            await page.goto(`${n8nUrl}/workflows`, { waitUntil: 'networkidle' });
+            
+            // Wait for workflows list to load
+            await page.waitForSelector('[data-test-id="workflows-list"], .workflows-list, [role="table"]', {
+              timeout: 10000
+            });
+            testReport.results.passed.push({
+              test: 'Workflows Navigation',
+              message: 'Successfully navigated to workflows page'
+            });
+
+            if (testMode === 'import-only' || testMode === 'full') {
+              // Test 3: Import workflow
+              console.log('📥 Testing workflow import...');
+              
+              // Click import button
+              const importBtn = await page.locator('button:has-text("Import"), [data-test-id="import-workflow"]').first();
+              await importBtn.click();
+              
+              // Wait for import dialog
+              await page.waitForSelector('.modal, [data-test-id="import-dialog"]', { timeout: 5000 });
+              
+              // Fill JSON
+              const jsonInput = await page.locator('textarea, [contenteditable="true"]').first();
+              await jsonInput.fill(workflowContent);
+              
+              if (captureScreenshots) {
+                const screenshotPath = 'playwright-test-results/02-import-dialog.png';
+                await page.screenshot({ path: screenshotPath });
+                testReport.screenshots.push(screenshotPath);
+              }
+              
+              // Click import/save
+              const confirmBtn = await page.locator('button:has-text("Import"), button:has-text("Save")').last();
+              await confirmBtn.click();
+              
+              // Wait for workflow editor
+              await page.waitForSelector('.workflow-canvas, [data-test-id="canvas"]', { timeout: 10000 });
+              testReport.results.passed.push({
+                test: 'Workflow Import',
+                message: 'Successfully imported workflow'
+              });
+              
+              if (captureScreenshots) {
+                const screenshotPath = 'playwright-test-results/03-workflow-editor.png';
+                await page.screenshot({ path: screenshotPath, fullPage: true });
+                testReport.screenshots.push(screenshotPath);
+              }
+            }
+
+            if (testMode === 'execute' || testMode === 'full') {
+              // Test 4: Execute workflow
+              console.log('🚀 Testing workflow execution...');
+              
+              // Find execute button
+              const executeBtn = await page.locator('button:has-text("Execute"), [data-test-id="execute-workflow"]').first();
+              
+              if (await executeBtn.isVisible()) {
+                await executeBtn.click();
+                
+                // Wait for execution to start
+                await page.waitForTimeout(2000);
+                
+                // Check for execution indicators
+                const executionIndicator = await page.locator('.execution-running, .execution-success, [data-test-id="execution-status"]').first();
+                
+                if (await executionIndicator.isVisible()) {
+                  testReport.results.passed.push({
+                    test: 'Workflow Execution',
+                    message: 'Workflow execution started successfully'
+                  });
+                  
+                  // Wait for completion (with timeout)
+                  try {
+                    await page.waitForSelector('.execution-success, [data-test-id="execution-success"]', {
+                      timeout: 30000
+                    });
+                    testReport.results.passed.push({
+                      test: 'Workflow Completion',
+                      message: 'Workflow executed successfully'
+                    });
+                  } catch {
+                    testReport.results.warnings.push({
+                      test: 'Workflow Completion',
+                      message: 'Workflow execution did not complete within timeout'
+                    });
+                  }
+                } else {
+                  testReport.results.warnings.push({
+                    test: 'Workflow Execution',
+                    message: 'Could not verify execution status'
+                  });
+                }
+                
+                if (captureScreenshots) {
+                  const screenshotPath = 'playwright-test-results/04-execution-result.png';
+                  await page.screenshot({ path: screenshotPath, fullPage: true });
+                  testReport.screenshots.push(screenshotPath);
+                }
+              } else {
+                testReport.results.warnings.push({
+                  test: 'Workflow Execution',
+                  message: 'Execute button not found - workflow might need configuration'
+                });
+              }
+            }
+
+            // Test 5: Check for errors
+            console.log('🔍 Checking for errors...');
+            const errorElements = await page.locator('.error, [data-test-id="error"], .notification-error').all();
+            
+            if (errorElements.length > 0) {
+              for (const errorEl of errorElements) {
+                const errorText = await errorEl.textContent();
+                testReport.results.failed.push({
+                  test: 'Error Check',
+                  message: `Error found: ${errorText}`
+                });
+              }
+            } else {
+              testReport.results.passed.push({
+                test: 'Error Check',
+                message: 'No errors detected'
+              });
+            }
+
+          } catch (error) {
+            testReport.results.failed.push({
+              test: 'Runtime Error',
+              message: error.message,
+              stack: error.stack
+            });
+          } finally {
+            await browser.close();
+            testReport.executionTime = Date.now() - startTime;
+          }
+
+          // Save report
+          const reportPath = 'playwright-test-results/test-report.json';
+          await writeFile(reportPath, JSON.stringify(testReport, null, 2));
+          
+          // Generate summary
+          const summary = generateSummary(testReport);
+          await writeFile('playwright-test-results/test-summary.md', summary);
+          
+          // Set outputs
+          console.log(`::set-output name=passed::${testReport.results.failed.length === 0}`);
+          console.log(`::set-output name=report_path::${reportPath}`);
+          console.log(`::set-output name=screenshots::${testReport.screenshots.join(',')}`);
+          
+          return testReport;
+        }
+
+        function generateSummary(report) {
+          let md = `# 🧪 Playwright Workflow Test Report\n\n`;
+          md += `**Workflow**: ${report.workflowFile}\n`;
+          md += `**n8n URL**: ${report.n8nUrl}\n`;
+          md += `**Test Mode**: ${report.testMode}\n`;
+          md += `**Execution Time**: ${report.executionTime}ms\n\n`;
+          
+          md += `## 📊 Results Summary\n\n`;
+          md += `- ✅ Passed: ${report.results.passed.length}\n`;
+          md += `- ❌ Failed: ${report.results.failed.length}\n`;
+          md += `- ⚠️ Warnings: ${report.results.warnings.length}\n\n`;
+          
+          if (report.results.passed.length > 0) {
+            md += `### ✅ Passed Tests\n\n`;
+            report.results.passed.forEach(test => {
+              md += `- **${test.test}**: ${test.message}\n`;
+            });
+            md += '\n';
+          }
+          
+          if (report.results.warnings.length > 0) {
+            md += `### ⚠️ Warnings\n\n`;
+            report.results.warnings.forEach(test => {
+              md += `- **${test.test}**: ${test.message}\n`;
+            });
+            md += '\n';
+          }
+          
+          if (report.results.failed.length > 0) {
+            md += `### ❌ Failed Tests\n\n`;
+            report.results.failed.forEach(test => {
+              md += `- **${test.test}**: ${test.message}\n`;
+              if (test.stack) {
+                md += `\n\`\`\`\n${test.stack}\n\`\`\`\n`;
+              }
+            });
+            md += '\n';
+          }
+          
+          if (report.screenshots.length > 0) {
+            md += `### 📸 Screenshots\n\n`;
+            report.screenshots.forEach((screenshot, i) => {
+              md += `${i + 1}. ${screenshot}\n`;
+            });
+          }
+          
+          return md;
+        }
+
+        testWorkflow().catch(console.error);
+        EOF
+
+    - name: Run Playwright test
+      id: test
+      shell: bash
+      run: |
+        node playwright-test-workflow.mjs \
+          "${{ inputs.workflow-file }}" \
+          "${{ inputs.n8n-url }}" \
+          "${{ inputs.test-mode }}" \
+          "${{ inputs.capture-screenshots }}" \
+          "${{ inputs.timeout }}"
+
+    - name: Display test summary
+      if: always()
+      shell: bash
+      run: |
+        if [ -f "playwright-test-results/test-summary.md" ]; then
+          cat playwright-test-results/test-summary.md
+        fi

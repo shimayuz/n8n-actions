@@ -1,0 +1,216 @@
+name: 'Validate n8n Workflow'
+description: 'Validates n8n workflow JSON files against schema and best practices'
+author: 'n8n-workflows'
+
+inputs:
+  workflow-file:
+    description: 'Path to the workflow JSON file to validate'
+    required: true
+  strict-mode:
+    description: 'Enable strict validation (includes warnings as errors)'
+    required: false
+    default: 'false'
+  workflow-version:
+    description: 'workflow.md version to validate against'
+    required: false
+    default: 'v2025.7'
+
+outputs:
+  validation-passed:
+    description: 'Whether the validation passed'
+    value: ${{ steps.validate.outputs.passed }}
+  validation-report:
+    description: 'Detailed validation report'
+    value: ${{ steps.validate.outputs.report }}
+  workflow-name:
+    description: 'Name of the validated workflow'
+    value: ${{ steps.extract.outputs.name }}
+  node-count:
+    description: 'Number of nodes in the workflow'
+    value: ${{ steps.extract.outputs.node_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check file exists
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.workflow-file }}" ]; then
+          echo "❌ Error: Workflow file not found: ${{ inputs.workflow-file }}"
+          exit 1
+        fi
+
+    - name: Validate JSON syntax
+      id: json-check
+      shell: bash
+      run: |
+        echo "Validating JSON syntax..."
+        if jq . "${{ inputs.workflow-file }}" > /dev/null 2>&1; then
+          echo "✅ JSON syntax is valid"
+        else
+          echo "❌ Invalid JSON syntax in ${{ inputs.workflow-file }}"
+          jq . "${{ inputs.workflow-file }}" 2>&1
+          exit 1
+        fi
+
+    - name: Extract workflow metadata
+      id: extract
+      shell: bash
+      run: |
+        WORKFLOW_NAME=$(jq -r '.name // "Unnamed Workflow"' "${{ inputs.workflow-file }}")
+        NODE_COUNT=$(jq '.nodes | length' "${{ inputs.workflow-file }}")
+        WORKFLOW_ID=$(jq -r '.id // empty' "${{ inputs.workflow-file }}")
+        
+        echo "name=$WORKFLOW_NAME" >> $GITHUB_OUTPUT
+        echo "node_count=$NODE_COUNT" >> $GITHUB_OUTPUT
+        echo "workflow_id=$WORKFLOW_ID" >> $GITHUB_OUTPUT
+        
+        echo "📋 Workflow: $WORKFLOW_NAME"
+        echo "🔢 Nodes: $NODE_COUNT"
+        if [ -n "$WORKFLOW_ID" ]; then
+          echo "🆔 ID: $WORKFLOW_ID"
+        fi
+
+    - name: Validate workflow structure
+      id: validate
+      shell: bash
+      run: |
+        echo "## 🔍 Validating workflow structure..." > validation_report.txt
+        echo "" >> validation_report.txt
+        
+        VALIDATION_PASSED=true
+        ERROR_COUNT=0
+        WARNING_COUNT=0
+        
+        # Function to add error
+        add_error() {
+          echo "❌ ERROR: $1" >> validation_report.txt
+          ERROR_COUNT=$((ERROR_COUNT + 1))
+          VALIDATION_PASSED=false
+        }
+        
+        # Function to add warning
+        add_warning() {
+          echo "⚠️  WARNING: $1" >> validation_report.txt
+          WARNING_COUNT=$((WARNING_COUNT + 1))
+          if [ "${{ inputs.strict-mode }}" = "true" ]; then
+            VALIDATION_PASSED=false
+          fi
+        }
+        
+        # Check required fields
+        echo "### Required Fields" >> validation_report.txt
+        
+        # Check name
+        NAME=$(jq -r '.name // empty' "${{ inputs.workflow-file }}")
+        if [ -z "$NAME" ]; then
+          add_error "Missing required field: name"
+        else
+          echo "✅ name: $NAME" >> validation_report.txt
+        fi
+        
+        # Check nodes array
+        if ! jq -e '.nodes | type == "array"' "${{ inputs.workflow-file }}" > /dev/null 2>&1; then
+          add_error "Missing or invalid 'nodes' array"
+        else
+          echo "✅ nodes: array with $(jq '.nodes | length' "${{ inputs.workflow-file }}") items" >> validation_report.txt
+        fi
+        
+        # Check connections object
+        if ! jq -e '.connections | type == "object"' "${{ inputs.workflow-file }}" > /dev/null 2>&1; then
+          add_error "Missing or invalid 'connections' object"
+        else
+          echo "✅ connections: object" >> validation_report.txt
+        fi
+        
+        # Check settings
+        echo "" >> validation_report.txt
+        echo "### Settings Validation" >> validation_report.txt
+        
+        # Check saveDataSuccessExecution
+        SAVE_SUCCESS=$(jq -r '.settings.saveDataSuccessExecution // empty' "${{ inputs.workflow-file }}")
+        SAVE_SUCCESS_TYPE=$(jq -r '.settings.saveDataSuccessExecution | type' "${{ inputs.workflow-file }}" 2>/dev/null || echo "null")
+        
+        if [ "$SAVE_SUCCESS_TYPE" != "string" ]; then
+          add_error "saveDataSuccessExecution must be a string, got: $SAVE_SUCCESS_TYPE"
+        elif [ "$SAVE_SUCCESS" != "all" ] && [ "$SAVE_SUCCESS" != "none" ]; then
+          add_error "saveDataSuccessExecution must be 'all' or 'none', got: $SAVE_SUCCESS"
+        else
+          echo "✅ saveDataSuccessExecution: '$SAVE_SUCCESS' (string)" >> validation_report.txt
+        fi
+        
+        # Check saveDataErrorExecution
+        SAVE_ERROR=$(jq -r '.settings.saveDataErrorExecution // empty' "${{ inputs.workflow-file }}")
+        SAVE_ERROR_TYPE=$(jq -r '.settings.saveDataErrorExecution | type' "${{ inputs.workflow-file }}" 2>/dev/null || echo "null")
+        
+        if [ "$SAVE_ERROR_TYPE" != "string" ]; then
+          add_error "saveDataErrorExecution must be a string, got: $SAVE_ERROR_TYPE"
+        elif [ "$SAVE_ERROR" != "all" ] && [ "$SAVE_ERROR" != "none" ]; then
+          add_error "saveDataErrorExecution must be 'all' or 'none', got: $SAVE_ERROR"
+        else
+          echo "✅ saveDataErrorExecution: '$SAVE_ERROR' (string)" >> validation_report.txt
+        fi
+        
+        # Check for credentials
+        echo "" >> validation_report.txt
+        echo "### Security Checks" >> validation_report.txt
+        
+        CRED_COUNT=$(jq '[.nodes[].credentials | select(. != null and . != {})] | length' "${{ inputs.workflow-file }}")
+        if [ "$CRED_COUNT" -gt 0 ]; then
+          add_warning "Workflow contains $CRED_COUNT nodes with credentials - these will be removed on import"
+          # List nodes with credentials
+          jq -r '.nodes[] | select(.credentials != null and .credentials != {}) | "  - \(.name) (\(.type))"' "${{ inputs.workflow-file }}" >> validation_report.txt
+        else
+          echo "✅ No credentials found in workflow" >> validation_report.txt
+        fi
+        
+        # Check node connections
+        echo "" >> validation_report.txt
+        echo "### Node Connectivity" >> validation_report.txt
+        
+        # Get all node names
+        NODE_NAMES=$(jq -r '.nodes[].name' "${{ inputs.workflow-file }}" | sort -u)
+        
+        # Check if all connections reference existing nodes
+        INVALID_CONNECTIONS=0
+        for node in $(jq -r '.connections | keys[]' "${{ inputs.workflow-file }}"); do
+          if ! echo "$NODE_NAMES" | grep -q "^$node$"; then
+            add_error "Connection references non-existent node: $node"
+            INVALID_CONNECTIONS=$((INVALID_CONNECTIONS + 1))
+          fi
+        done
+        
+        if [ "$INVALID_CONNECTIONS" -eq 0 ]; then
+          echo "✅ All connections reference valid nodes" >> validation_report.txt
+        fi
+        
+        # Summary
+        echo "" >> validation_report.txt
+        echo "---" >> validation_report.txt
+        echo "### Summary" >> validation_report.txt
+        echo "- Errors: $ERROR_COUNT" >> validation_report.txt
+        echo "- Warnings: $WARNING_COUNT" >> validation_report.txt
+        echo "- workflow.md version: ${{ inputs.workflow-version }}" >> validation_report.txt
+        
+        if [ "$VALIDATION_PASSED" = "true" ]; then
+          echo "- Result: ✅ PASSED" >> validation_report.txt
+          echo "passed=true" >> $GITHUB_OUTPUT
+        else
+          echo "- Result: ❌ FAILED" >> validation_report.txt
+          echo "passed=false" >> $GITHUB_OUTPUT
+        fi
+        
+        # Output report
+        REPORT=$(cat validation_report.txt)
+        echo "report<<EOF" >> $GITHUB_OUTPUT
+        echo "$REPORT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Display validation results
+      shell: bash
+      run: |
+        cat validation_report.txt
+        
+        if [ "${{ steps.validate.outputs.passed }}" != "true" ]; then
+          exit 1
+        fi

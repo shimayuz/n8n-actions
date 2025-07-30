@@ -1,0 +1,179 @@
+# n8n Workflow Automation Configuration
+# This file configures the GitHub Actions workflow automation system
+
+workflow_settings:
+  # Paths to scan for new workflows
+  source_paths:
+    - projects/*/phase-12-final/*.json
+    - projects/*/phase-7-final/*.json
+    - projects/*/phase-8-deployment/*.json
+  
+  # Target directory for processed workflows
+  target_path: workflows/
+  
+  # Branch naming configuration
+  branch_prefix: feature/workflow-
+  
+  # Pull request configuration
+  pr_template: .github/PULL_REQUEST_TEMPLATE/workflow.md
+  
+  # Default labels to apply to workflow PRs
+  labels:
+    - workflow
+    - auto-generated
+    - n8n
+  
+  # Default reviewers for workflow PRs
+  reviewers:
+    - shimayuz
+  
+  # Assignees for workflow PRs (defaults to PR creator)
+  assignees: []
+
+# Validation settings
+validation:
+  # workflow.md version to validate against
+  workflow_version: v2025.7
+  
+  # Validation mode (strict/normal)
+  mode: normal
+  
+  # Required fields that must be present
+  required_fields:
+    - name
+    - nodes
+    - connections
+    - settings
+  
+  # Settings that must have specific values
+  required_settings:
+    saveDataSuccessExecution:
+      type: string
+      values: ["all", "none"]
+    saveDataErrorExecution:
+      type: string
+      values: ["all", "none"]
+
+# n8n API configuration (values come from secrets)
+n8n_api:
+  # API URL is stored in N8N_API_URL secret
+  # API Key is stored in N8N_API_KEY secret
+  
+  # Sync behavior
+  sync_behavior:
+    # Remove credentials before sync
+    remove_credentials: true
+    
+    # Update local files with workflow IDs
+    update_local_files: true
+    
+    # Activate workflows after sync
+    auto_activate: false
+    
+    # Retry configuration
+    max_retries: 3
+    retry_delay: 5000  # milliseconds
+
+# Notification settings
+notifications:
+  # Create issues on sync failure
+  create_issues_on_failure: true
+  
+  # Issue labels
+  issue_labels:
+    - bug
+    - workflow-sync
+    - automation
+  
+  # Notify these users on issues
+  notify_users:
+    - "@shimayuz"
+
+# Automation behavior
+automation:
+  # Auto-create PRs for new workflows
+  auto_create_pr: false
+  
+  # Run validation on all workflow files
+  validate_all: true
+  
+  # Skip workflows that match these patterns
+  skip_patterns:
+    - "*-test.json"
+    - "*-draft.json"
+    - "*.backup.json"
+  
+  # Schedule configuration (cron)
+  schedule:
+    # Daily scan at 2 AM UTC
+    daily_scan: "0 2 * * *"
+    
+    # Weekly full validation on Sunday at 3 AM UTC
+    weekly_validation: "0 3 * * 0"
+
+# Workflow categories (for organization)
+categories:
+  - name: automation
+    description: "General automation workflows"
+    path: workflows/automation/
+    
+  - name: integrations
+    description: "Third-party integrations"
+    path: workflows/integrations/
+    
+  - name: data-processing
+    description: "Data transformation and processing"
+    path: workflows/data-processing/
+    
+  - name: samples
+    description: "Sample and demo workflows"
+    path: workflows/samples/
+
+# Performance settings
+performance:
+  # Maximum workflows to process in a single run
+  batch_size: 10
+  
+  # Parallel processing
+  parallel_validation: true
+  max_parallel_jobs: 4
+  
+  # Timeout settings (milliseconds)
+  validation_timeout: 30000
+  sync_timeout: 60000
+
+# Security settings
+security:
+  # Allowed node types (empty = all allowed)
+  allowed_node_types: []
+  
+  # Blocked node types
+  blocked_node_types: []
+  
+  # Scan for sensitive data
+  scan_for_secrets: true
+  
+  # Patterns to detect secrets
+  secret_patterns:
+    - "api[_-]?key"
+    - "api[_-]?secret"
+    - "password"
+    - "token"
+    - "credential"
+
+# Metrics and monitoring
+metrics:
+  # Track automation metrics
+  enabled: true
+  
+  # Metrics file location
+  metrics_file: .github/workflow-metrics.json
+  
+  # Metrics to track
+  track:
+    - total_workflows_processed
+    - successful_syncs
+    - failed_syncs
+    - validation_errors
+    - pr_creation_time
+    - sync_duration
