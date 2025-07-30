@@ -1,0 +1,243 @@
+name: Validate n8n Workflow PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'workflows/*.json'
+      - 'projects/*/phase-*/**.json'
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  validate-workflow:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Get changed workflow files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            workflows/*.json
+            projects/**/**.json
+          json: true
+
+      - name: Validate each workflow
+        id: validate
+        run: |
+          echo "## 🔍 Workflow Validation Report" > validation_summary.md
+          echo "" >> validation_summary.md
+          
+          VALIDATION_FAILED=false
+          WORKFLOWS_VALIDATED=0
+          
+          # Parse changed files
+          echo '${{ steps.changed-files.outputs.all_changed_files }}' | jq -r '.[]' | while read -r file; do
+            if [[ "$file" == *.json ]]; then
+              echo "Validating: $file"
+              WORKFLOWS_VALIDATED=$((WORKFLOWS_VALIDATED + 1))
+              
+              # Basic JSON syntax check
+              if ! jq . "$file" > /dev/null 2>&1; then
+                echo "### ❌ $file" >> validation_summary.md
+                echo "**Error**: Invalid JSON syntax" >> validation_summary.md
+                echo "" >> validation_summary.md
+                VALIDATION_FAILED=true
+                continue
+              fi
+              
+              # Run workflow validation
+              VALIDATION_OUTPUT=$(node scripts/validate-workflow.js "$file" 2>&1) || true
+              
+              if echo "$VALIDATION_OUTPUT" | grep -q "Validation successful"; then
+                echo "### ✅ $file" >> validation_summary.md
+                echo "Validation passed! workflow.md v2025.7 compliant." >> validation_summary.md
+              else
+                echo "### ❌ $file" >> validation_summary.md
+                echo '```' >> validation_summary.md
+                echo "$VALIDATION_OUTPUT" | head -50 >> validation_summary.md
+                echo '```' >> validation_summary.md
+                VALIDATION_FAILED=true
+              fi
+              
+              echo "" >> validation_summary.md
+              
+              # Additional checks
+              echo "#### Additional Checks:" >> validation_summary.md
+              
+              # Check for required fields
+              NAME=$(jq -r '.name // empty' "$file")
+              if [ -z "$NAME" ]; then
+                echo "- ⚠️ Missing workflow name" >> validation_summary.md
+                VALIDATION_FAILED=true
+              else
+                echo "- ✅ Workflow name: $NAME" >> validation_summary.md
+              fi
+              
+              # Check settings
+              SAVE_SUCCESS=$(jq -r '.settings.saveDataSuccessExecution // empty' "$file")
+              SAVE_ERROR=$(jq -r '.settings.saveDataErrorExecution // empty' "$file")
+              
+              if [ "$SAVE_SUCCESS" != "all" ] && [ "$SAVE_SUCCESS" != "none" ]; then
+                echo "- ❌ Invalid saveDataSuccessExecution: must be 'all' or 'none' (string)" >> validation_summary.md
+                VALIDATION_FAILED=true
+              else
+                echo "- ✅ saveDataSuccessExecution: $SAVE_SUCCESS" >> validation_summary.md
+              fi
+              
+              if [ "$SAVE_ERROR" != "all" ] && [ "$SAVE_ERROR" != "none" ]; then
+                echo "- ❌ Invalid saveDataErrorExecution: must be 'all' or 'none' (string)" >> validation_summary.md
+                VALIDATION_FAILED=true
+              else
+                echo "- ✅ saveDataErrorExecution: $SAVE_ERROR" >> validation_summary.md
+              fi
+              
+              # Check for nodes
+              NODE_COUNT=$(jq '.nodes | length' "$file")
+              echo "- ℹ️ Total nodes: $NODE_COUNT" >> validation_summary.md
+              
+              # Check for credentials (should be empty)
+              CRED_COUNT=$(jq '[.nodes[].credentials | select(. != null and . != {})] | length' "$file")
+              if [ "$CRED_COUNT" -gt 0 ]; then
+                echo "- ⚠️ Contains $CRED_COUNT nodes with credentials (will be removed on import)" >> validation_summary.md
+              fi
+              
+              echo "" >> validation_summary.md
+            fi
+          done
+          
+          # Summary
+          echo "---" >> validation_summary.md
+          echo "### 📊 Summary" >> validation_summary.md
+          echo "- Total workflows validated: $WORKFLOWS_VALIDATED" >> validation_summary.md
+          
+          if [ "$VALIDATION_FAILED" = "true" ]; then
+            echo "- **Result**: ❌ Validation failed" >> validation_summary.md
+            echo "validation_status=failed" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "- **Result**: ✅ All validations passed" >> validation_summary.md
+            echo "validation_status=passed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR with validation results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const validationSummary = fs.readFileSync('validation_summary.md', 'utf8');
+            
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.data.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🔍 Workflow Validation Report')
+            );
+            
+            const commentBody = validationSummary;
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+      - name: Set check status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const status = '${{ steps.validate.outputs.validation_status }}';
+            const conclusion = status === 'passed' ? 'success' : 'failure';
+            
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'n8n Workflow Validation',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: conclusion,
+              output: {
+                title: `Workflow Validation ${conclusion === 'success' ? 'Passed' : 'Failed'}`,
+                summary: `The workflow validation ${conclusion === 'success' ? 'completed successfully' : 'found issues that need to be resolved'}.`
+              }
+            });
+
+      - name: Label PR based on validation
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const status = '${{ steps.validate.outputs.validation_status }}';
+            
+            // Try to add labels only if they exist
+            // Skip if we don't have permission to create labels
+            try {
+              // First check if labels exist
+              const labelName = status === 'passed' ? 'validation-passed' : 'validation-failed';
+              
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName
+                });
+                
+                // Label exists, try to add it
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  labels: [labelName]
+                });
+                
+                console.log(`Successfully added label: ${labelName}`);
+              } catch (e) {
+                if (e.status === 404) {
+                  console.log(`Label '${labelName}' does not exist. Skipping label assignment.`);
+                } else {
+                  console.log(`Could not add label: ${e.message}`);
+                }
+              }
+            } catch (e) {
+              console.log(`Label operation skipped: ${e.message}`);
+            }

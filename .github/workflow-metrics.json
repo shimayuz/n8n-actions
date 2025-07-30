@@ -1,0 +1,23 @@
+{
+  "automation_metrics": {
+    "total_workflows_processed": 0,
+    "successful_syncs": 0,
+    "failed_syncs": 0,
+    "validation_errors": 0,
+    "prs_created": 0,
+    "average_pr_creation_time": null,
+    "average_sync_duration": null,
+    "last_updated": null
+  },
+  "workflow_stats": {
+    "total_workflows": 0,
+    "active_workflows": 0,
+    "workflows_by_category": {}
+  },
+  "performance": {
+    "fastest_sync": null,
+    "slowest_sync": null,
+    "average_validation_time": null
+  },
+  "history": []
+}

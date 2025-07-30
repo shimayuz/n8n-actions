@@ -1,0 +1,32 @@
+{
+    "permissions": {
+      "allow": [
+        "mcp__playwright",
+        "Bash(npm run lint)",
+        "Bash(npm run build:*)",
+        "Bash(npm run dev:*)",
+        "mcp__ide__getDiagnostics",
+        "Bash(ls:*)",
+        "Bash(npx kill-port:*)",
+        "Bash(true)",
+        "Bash(cat:*)",
+        "Bash(rm:*)",
+        "Bash(touch:*)",
+        "Bash(git rm:*)",
+        "WebFetch(domain:docs.anthropic.com)",
+        "Bash(claude mcp:*)",
+        "Bash(curl:*)",
+        "Bash(grep:*)",
+        "Bash(find:*)",
+        "Bash(npm install:*)",
+        "Bash(npx expo start:*)",
+        "Bash(npx expo:*)",
+        "Bash(pkill:*)",
+        "WebFetch(domain:sunoapi.org)",
+        "WebFetch(domain:docs.sunoapi.org)",
+        "Bash(mkdir:*)"
+      ],
+      "deny": []
+    },
+    "enableAllProjectMcpServers": false
+  }

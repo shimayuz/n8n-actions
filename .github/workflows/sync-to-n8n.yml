@@ -1,0 +1,305 @@
+name: Sync Workflows to n8n
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'workflows/*.json'
+  
+  workflow_dispatch:
+    inputs:
+      workflow_name:
+        description: 'Specific workflow to sync (leave empty to sync all)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Perform a dry run without actually syncing'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  N8N_API_URL: ${{ secrets.N8N_API_URL || 'https://your-n8n-instance.com/api/v1' }}
+  WORKFLOWS_DIR: 'workflows'
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  sync-workflows:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Get changed files
+        id: changed-files
+        if: github.event_name == 'push'
+        run: |
+          # Get list of changed workflow files in the last commit
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD -- "${WORKFLOWS_DIR}/*.json" | tr '\n' ' ')
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No workflow files changed"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changed files: $CHANGED_FILES"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine workflows to sync
+        id: workflows
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.workflow_name }}" ]; then
+            # Specific workflow requested
+            WORKFLOW_FILE="${WORKFLOWS_DIR}/${{ github.event.inputs.workflow_name }}.json"
+            if [ -f "$WORKFLOW_FILE" ]; then
+              echo "Syncing specific workflow: $WORKFLOW_FILE"
+              echo "workflows_to_sync=$WORKFLOW_FILE" >> $GITHUB_OUTPUT
+              echo "sync_mode=single" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Workflow file not found: $WORKFLOW_FILE"
+              exit 1
+            fi
+          elif [ "${{ steps.changed-files.outputs.has_changes }}" = "true" ]; then
+            # Sync only changed files
+            echo "Syncing changed workflows: ${{ steps.changed-files.outputs.changed_files }}"
+            echo "workflows_to_sync=${{ steps.changed-files.outputs.changed_files }}" >> $GITHUB_OUTPUT
+            echo "sync_mode=changed" >> $GITHUB_OUTPUT
+          else
+            # Sync all workflows (manual dispatch without specific workflow)
+            ALL_WORKFLOWS=$(find ${WORKFLOWS_DIR} -name "*.json" -type f | tr '\n' ' ')
+            echo "Syncing all workflows: $ALL_WORKFLOWS"
+            echo "workflows_to_sync=$ALL_WORKFLOWS" >> $GITHUB_OUTPUT
+            echo "sync_mode=all" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create deployment
+        id: deployment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const deployment = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: 'production',
+              description: `Syncing workflows to n8n (mode: ${{ steps.workflows.outputs.sync_mode }})`,
+              auto_merge: false,
+              required_contexts: []
+            });
+            
+            return deployment.data.id;
+
+      - name: Sync workflows to n8n
+        id: sync
+        env:
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+        run: |
+          echo "## 🔄 n8n Sync Report" > sync_report.md
+          echo "" >> sync_report.md
+          echo "**Sync Mode**: ${{ steps.workflows.outputs.sync_mode }}" >> sync_report.md
+          echo "**Dry Run**: ${{ github.event.inputs.dry_run || 'false' }}" >> sync_report.md
+          echo "" >> sync_report.md
+          
+          SYNC_SUCCESS=true
+          SYNCED_COUNT=0
+          FAILED_COUNT=0
+          
+          # Process each workflow
+          for workflow_file in ${{ steps.workflows.outputs.workflows_to_sync }}; do
+            if [ -f "$workflow_file" ]; then
+              WORKFLOW_NAME=$(basename "$workflow_file" .json)
+              echo "### 📄 $WORKFLOW_NAME" >> sync_report.md
+              
+              # Validate workflow before sync
+              if node scripts/validate-workflow.js "$workflow_file" > /dev/null 2>&1; then
+                echo "- ✅ Validation passed" >> sync_report.md
+                
+                # Read and prepare workflow
+                WORKFLOW_JSON=$(cat "$workflow_file")
+                
+                # Remove any credential references for security
+                CLEANED_JSON=$(echo "$WORKFLOW_JSON" | jq 'walk(if type == "object" and has("credentials") then del(.credentials) else . end)')
+                
+                if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+                  echo "- 🔍 Dry run - would sync workflow" >> sync_report.md
+                  echo '```json' >> sync_report.md
+                  echo "$CLEANED_JSON" | jq -c '.name' >> sync_report.md
+                  echo '```' >> sync_report.md
+                  SYNCED_COUNT=$((SYNCED_COUNT + 1))
+                else
+                  # Check if workflow exists
+                  WORKFLOW_ID=$(echo "$CLEANED_JSON" | jq -r '.id // empty')
+                  
+                  if [ -n "$WORKFLOW_ID" ]; then
+                    # Update existing workflow
+                    RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+                      "${N8N_API_URL}/workflows/${WORKFLOW_ID}" \
+                      -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+                      -H "Content-Type: application/json" \
+                      -d "$CLEANED_JSON")
+                    
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+                    BODY=$(echo "$RESPONSE" | head -n-1)
+                    
+                    if [ "$HTTP_CODE" = "200" ]; then
+                      echo "- ✅ Updated existing workflow (ID: $WORKFLOW_ID)" >> sync_report.md
+                      SYNCED_COUNT=$((SYNCED_COUNT + 1))
+                    else
+                      echo "- ❌ Failed to update workflow" >> sync_report.md
+                      echo '```' >> sync_report.md
+                      echo "$BODY" | jq . >> sync_report.md || echo "$BODY" >> sync_report.md
+                      echo '```' >> sync_report.md
+                      FAILED_COUNT=$((FAILED_COUNT + 1))
+                      SYNC_SUCCESS=false
+                    fi
+                  else
+                    # Create new workflow
+                    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+                      "${N8N_API_URL}/workflows" \
+                      -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+                      -H "Content-Type: application/json" \
+                      -d "$CLEANED_JSON")
+                    
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+                    BODY=$(echo "$RESPONSE" | head -n-1)
+                    
+                    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+                      NEW_ID=$(echo "$BODY" | jq -r '.id // empty')
+                      echo "- ✅ Created new workflow (ID: $NEW_ID)" >> sync_report.md
+                      SYNCED_COUNT=$((SYNCED_COUNT + 1))
+                      
+                      # Update local file with new ID
+                      echo "$CLEANED_JSON" | jq --arg id "$NEW_ID" '.id = $id' > "$workflow_file.tmp"
+                      mv "$workflow_file.tmp" "$workflow_file"
+                    else
+                      echo "- ❌ Failed to create workflow" >> sync_report.md
+                      echo '```' >> sync_report.md
+                      echo "$BODY" | jq . >> sync_report.md || echo "$BODY" >> sync_report.md
+                      echo '```' >> sync_report.md
+                      FAILED_COUNT=$((FAILED_COUNT + 1))
+                      SYNC_SUCCESS=false
+                    fi
+                  fi
+                fi
+              else
+                echo "- ❌ Validation failed - skipping sync" >> sync_report.md
+                FAILED_COUNT=$((FAILED_COUNT + 1))
+                SYNC_SUCCESS=false
+              fi
+              
+              echo "" >> sync_report.md
+            fi
+          done
+          
+          # Summary
+          echo "---" >> sync_report.md
+          echo "## 📊 Summary" >> sync_report.md
+          echo "- **Total workflows processed**: $((SYNCED_COUNT + FAILED_COUNT))" >> sync_report.md
+          echo "- **Successfully synced**: $SYNCED_COUNT" >> sync_report.md
+          echo "- **Failed**: $FAILED_COUNT" >> sync_report.md
+          
+          if [ "$SYNC_SUCCESS" = "true" ]; then
+            echo "- **Status**: ✅ Success" >> sync_report.md
+            echo "sync_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "- **Status**: ❌ Failed" >> sync_report.md
+            echo "sync_status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update deployment status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const syncReport = fs.readFileSync('sync_report.md', 'utf8');
+            const status = '${{ steps.sync.outputs.sync_status }}' === 'success' ? 'success' : 'failure';
+            
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: ${{ steps.deployment.outputs.result }},
+              state: status,
+              description: syncReport.split('\n').find(line => line.includes('Status'))?.replace(/[*-]/g, '').trim() || 'Sync completed',
+              environment_url: '${{ env.N8N_API_URL }}'
+            });
+
+      - name: Create summary
+        if: always()
+        run: |
+          cat sync_report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Commit workflow ID updates
+        if: steps.sync.outputs.sync_status == 'success' && github.event.inputs.dry_run != 'true'
+        run: |
+          if git diff --quiet; then
+            echo "No workflow ID updates needed"
+          else
+            git config --local user.email "github-actions[bot]@users.noreply.github.com"
+            git config --local user.name "github-actions[bot]"
+            git add workflows/*.json
+            git commit -m "chore: update workflow IDs after n8n sync [skip ci]
+
+            Co-authored-by: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>"
+            git push
+          fi
+
+      - name: Send notification
+        if: failure() && github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Create an issue if sync failed
+            const issueBody = `The workflow sync to n8n failed for commit ${context.sha}.
+              
+              **Commit**: ${context.payload.head_commit.message}
+              **Author**: @${context.payload.head_commit.author.username}
+              
+              Please check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`;
+            
+            try {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `❌ n8n Workflow Sync Failed - ${new Date().toISOString().split('T')[0]}`,
+                body: issueBody
+              });
+              
+              // Try to add labels if they exist (ignore errors)
+              const labels = ['bug', 'workflow-sync'];
+              for (const label of labels) {
+                try {
+                  await github.rest.issues.getLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label
+                  });
+                  // Label exists, we can safely reference it in issue creation
+                } catch (e) {
+                  console.log(`Label '${label}' does not exist, skipping`);
+                }
+              }
+            } catch (error) {
+              console.error('Failed to create issue:', error.message);
+            }

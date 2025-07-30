@@ -1,0 +1,19 @@
+{
+  "projectName": "Discord Chatbot",
+  "requirements": {
+    "functionality": {
+      "triggerType": "mention",
+      "responseType": "fixed",
+      "responseContent": "こんにちは！",
+      "channels": "any"
+    },
+    "technical": {
+      "authMethod": "webhook",
+      "hasToken": false,
+      "hasWebhook": false,
+      "serverSpecified": false
+    },
+    "userLevel": "beginner",
+    "purpose": "test"
+  }
+}

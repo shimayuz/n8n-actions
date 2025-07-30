@@ -1,0 +1,23 @@
+{
+  "name": "n8n-workflows",
+  "version": "1.0.0",
+  "description": "This repository contains n8n workflows that are automatically synchronized with your n8n instance using GitHub Actions.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shimayuz/n8n-workflows.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/shimayuz/n8n-workflows/issues"
+  },
+  "homepage": "https://github.com/shimayuz/n8n-workflows#readme"
+}

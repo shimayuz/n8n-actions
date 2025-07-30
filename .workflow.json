@@ -1,0 +1,454 @@
+{
+  "name": "n8n-workflows",
+  "version": "1.0.0",
+  "description": "n8n workflow collection with strict compliance to workflow.md v2025.7",
+  "author": "heavenlykiss0820",
+  "created": "2025-07-28T08:16:32+09:00",
+  "lastUpdated": "2025-07-28T08:16:32+09:00",
+  "workflowMdVersion": "2025.7",
+
+  "complianceStandards": {
+    "purpose": "唯一のリファレンスとしてworkflow.mdに厳格準拠",
+    "qualityGuarantees": [
+      "n8nでエラーなくインポート・実行できる",
+      "構造の抜け漏れがない", 
+      "可読性と保守性が高い",
+      "セキュリティリスクが低い",
+      "チーム間で共通認識のある成果物となる"
+    ]
+  },
+
+  "n8nJsonStructure": {
+    "requiredTopLevelKeys": {
+      "mandatory": ["name", "nodes", "connections", "versionId", "active", "settings"],
+      "optional": ["id", "tags", "meta", "staticData"]
+    },
+    "requiredNodeFields": {
+      "mandatory": ["parameters", "name", "type", "typeVersion", "position", "id"],
+      "optional": ["credentials", "notes", "disabled", "continueOnFail", "notesInFlow", "retryOnFail", "maxTries", "waitBetweenTries", "webhookId"]
+    },
+    "minimalTemplate": {
+      "name": "サンプルWF",
+      "nodes": [],
+      "connections": {},
+      "versionId": "uuid-format-recommended",
+      "active": false,
+      "settings": {}
+    }
+  },
+
+  "nodeSpecifications": {
+    "recommendedTypeVersions": {
+      "n8n-nodes-base.httpRequest": 4,
+      "n8n-nodes-base.set": 3,
+      "n8n-nodes-base.if": 3,
+      "n8n-nodes-base.function": 1,
+      "n8n-nodes-base.webhook": 2,
+      "n8n-nodes-base.merge": 3,
+      "n8n-nodes-base.splitInBatches": 3,
+      "n8n-nodes-base.start": 1,
+      "n8n-nodes-base.respondToWebhook": 1
+    },
+    "connectionStructure": {
+      "basic": {
+        "ノード名": {
+          "main": [[{"node": "接続先ノード名", "type": "main", "index": 0}]]
+        }
+      },
+      "multipleOutputs": {
+        "IF分岐ノード": {
+          "main": [
+            [{"node": "True側ノード", "type": "main", "index": 0}],
+            [{"node": "False側ノード", "type": "main", "index": 0}]
+          ]
+        }
+      },
+      "errorHandling": {
+        "HTTPリクエスト": {
+          "main": [[{"node": "成功時処理", "type": "main", "index": 0}]],
+          "error": [[{"node": "エラー時処理", "type": "main", "index": 0}]]
+        }
+      }
+    }
+  },
+
+  "namingConventions": {
+    "workflowNames": {
+      "rule": "明確な目的を示す名称",
+      "languages": "English only",
+      "examples": ["Daily Report Generator"]
+    },
+    "nodeNames": {
+      "rule": "ノードの役割が明確な名前",
+      "duplicateHandling": "同じ種類のノードが複数ある場合は番号や用途を付加",
+      "goodExamples": ["HTTP Request (User Fetch)", "Data Formatting 1", "Slack Notification"],
+      "badExamples": ["Set", "Node1", "あ"]
+    }
+  },
+
+  "credentialsManagement": {
+    "rules": [
+      "プレーンなAPIキー等は直接記述禁止",
+      "必ずcredentialsオブジェクトで参照形式を使用",
+      "IDは事前にn8nで作成した認証情報のIDを指定"
+    ],
+    "format": {
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "n8n-credential-id-xxx"
+        }
+      }
+    }
+  },
+
+  "expressionLanguage": {
+    "basicPatterns": {
+      "simpleValue": "{{ $json.fieldName }}",
+      "conditional": "{{ $json.status === 'active' ? 'OK' : 'NG' }}",
+      "stringConcat": "{{ $json.firstName + ' ' + $json.lastName }}"
+    },
+    "complexLogic": {
+      "iifePattern": "{{ (() => { const data = $json; /* logic */ return result; })() }}"
+    },
+    "dataReferences": {
+      "current": "$json",
+      "previous": "$input.item.json", 
+      "specific": "$('ノード名').item.json",
+      "allItems": "$items()",
+      "workflow": "$workflow"
+    }
+  },
+
+  "errorHandling": {
+    "nodeLevel": {
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    "functionNodePattern": "try { /* メイン処理 */ } catch (error) { /* エラー処理 */ }"
+  },
+
+  "qualityChecklist": {
+    "structural": [
+      "トップレベルに必須キーがすべて存在",
+      "JSONとして文法的に正しい（カンマ、括弧の対応等）"
+    ],
+    "nodeLevel": [
+      "各ノードに必須フィールドがすべて存在",
+      "ノード名がワークフロー内でユニーク",
+      "typeVersionが最新の安定版",
+      "positionが適切に設定されている",
+      "IDがユニーク（UUID推奨）"
+    ],
+    "connections": [
+      "connectionsの参照先ノードがすべて存在",
+      "ノード名のタイポがない",
+      "出力インデックスが正しい"
+    ],
+    "parameters": [
+      "必須パラメータがすべて設定されている",
+      "式の記法がn8n仕様に準拠",
+      "credentialsが必要な場合、正しく設定されている"
+    ],
+    "security": [
+      "APIキー等の機密情報が直接記述されていない",
+      "credentialsはID参照形式",
+      "外部URLが正しくエスケープされている"
+    ],
+    "quality": [
+      "ノード名が役割を明確に示している",
+      "必要に応じてnotesが記載されている",
+      "エラーハンドリングが適切",
+      "リトライ設定が適切"
+    ]
+  },
+
+  "bestPractices": {
+    "designPrinciples": [
+      "Single Responsibility Principle: Each node should have a single clear responsibility",
+      "Error Handling: Implement error handling for all external integrations",
+      "Reusability: Common processing should be extracted into sub-workflows",
+      "Documentation: Use the notes field to document the processing logic"
+    ],
+    "performance": [
+      "Batch Processing: Large datasets should be processed in batches using the Split In Batches node",
+      "Parallel Processing: Independent processes should be executed in parallel",
+      "Cache Utilization: Static data should be stored in staticData",
+      "Avoid Unnecessary Loops: Array operations should be consolidated in a Function node"
+    ],
+    "security": [
+      "Principle of Least Privilege: credentials should be set with minimum privileges necessary",
+      "Input Validation: all external data should be validated",
+      "Secret Management: use environment variables or n8n's credential store",
+      "Log Management: do not log sensitive information"
+    ]
+  },
+
+  "prohibitions": {
+    "structural": [
+      "Unnecessary keys or fields outside of the official specification",
+      "Omission of required fields",
+      "Duplicate node names or IDs",
+      "Connections to non-existent nodes"
+    ],
+    "code": [
+      "Using syntax outside of the n8n Expression Language",
+      "Using dangerous functions such as eval()",
+      "Writing code that may cause infinite loops",
+      "Using unsupported ES features (ES2022 and later)"
+    ],
+    "security": [
+      "Directly writing API keys or passwords",
+      "Writing SQL queries with SQL injection vulnerabilities",
+      "Writing outputs with XSS vulnerabilities",
+      "Setting CORS incorrectly"
+    ]
+  },
+
+  "troubleshooting": {
+    "commonErrors": {
+      "Unknown node type": "typeVersionが古いか存在しない → 最新版を確認して更新",
+      "Node not found": "connections内の参照先が存在しない → ノード名を確認・修正",
+      "Invalid expression": "式の構文エラー → n8n Expression記法を確認",
+      "Credential not found": "認証情報IDが間違っている → n8nで正しいIDを確認"
+    },
+    "debugMethods": [
+      "エディタでのテスト実行: 各ノードを個別に実行して確認",
+      "式のプレビュー: エディタの式プレビュー機能を活用",
+      "ログ出力: Functionノードでconsole.log()使用",
+      "エラーワークフロー: 専用のエラーハンドリングワークフローを設定"
+    ]
+  },
+
+  "mcpIntegration": {
+    "enabled": true,
+    "description": "n8n-mcp server integration for deployment and validation",
+    "apiEndpoints": {
+      "baseUrl": "${N8N_API_URL}",
+      "apiKey": "${N8N_API_KEY}"
+    },
+    "availableOperations": [
+      "workflow_create",
+      "workflow_update", 
+      "workflow_validate",
+      "workflow_deploy",
+      "node_search",
+      "node_documentation"
+    ],
+    "deploymentProcess": {
+      "preValidation": [
+        "JSON structure validation",
+        "Node type verification",
+        "Connection integrity check",
+        "Security compliance scan"
+      ],
+      "deployment": [
+        "Create workflow via MCP",
+        "Validate deployment",
+        "Activate if requested"
+      ],
+      "postDeployment": [
+        "Update workflow status",
+        "Generate deployment log",
+        "Archive configuration"
+      ]
+    }
+  },
+
+  "environments": {
+    "development": {
+      "n8nApiUrl": "${N8N_API_URL}",
+      "n8nApiKey": "${N8N_API_KEY}",
+      "mcpServer": "n8n-mcp"
+    },
+    "production": {
+      "n8nApiUrl": "${N8N_API_URL}",
+      "n8nApiKey": "${N8N_API_KEY}"
+    }
+  },
+
+  "projectManagement": {
+    "structure": {
+      "description": "Each workflow gets its own project directory under projects/",
+      "pattern": "projects/[workflow-name]/",
+      "examples": [
+        "projects/discord-ai-chatbot/",
+        "projects/discord-chatbot/",
+        "projects/expense-approval/"
+      ]
+    },
+    "phaseDirectories": {
+      "phase-1-requirements": "User requirements and initial input capture",
+      "phase-2-context": "Context inference and filled requirements",
+      "phase-3-discovery": "Node discovery and exploration logs",
+      "phase-4-blueprint": "Macro/micro step blueprints and design",
+      "phase-5-validation": "Pre-validation reports and checks",
+      "phase-6-workflow": "Generated workflow JSON and validation",
+      "phase-7-final": "Final reviewed and patched workflow",
+      "phase-8-deployment": "Deployment logs and results",
+      "outputs": "Legacy outputs directory (project-specific)"
+    },
+    "creationProcess": {
+      "step1": "Create project directory: mkdir -p projects/[workflow-name]",
+      "step2": "Initialize phase directories within project",
+      "step3": "Generate workflow through defined phases",
+      "step4": "Store all artifacts in project-specific directories"
+    },
+    "artifactManagement": {
+      "isolation": "Each project maintains complete isolation of artifacts",
+      "traceability": "Full development history preserved per project",
+      "reusability": "Project templates can be copied for similar workflows"
+    }
+  },
+
+  "workflowCategories": {
+    "automation": {
+      "description": "General automation workflows",
+      "directory": "workflows/automation/",
+      "projectExamples": ["projects/expense-approval/"]
+    },
+    "integrations": {
+      "description": "Third-party service integrations", 
+      "directory": "workflows/integrations/",
+      "projectExamples": ["projects/discord-ai-chatbot/", "projects/discord-chatbot/"]
+    },
+    "data-processing": {
+      "description": "Data transformation and processing",
+      "directory": "workflows/data-processing/",
+      "projectExamples": []
+    },
+    "samples": {
+      "description": "Example and reference workflows",
+      "directory": "workflows/samples/",
+      "projectExamples": []
+    }
+  },
+
+  "workflows": [
+    {
+      "name": "Claude Code to GitHub PR",
+      "file": "workflows/claude-code-to-github-pr.json",
+      "projectDirectory": "projects/claude-code-to-github-pr/",
+      "category": "automation",
+      "description": "Automated PR creation from Claude code outputs",
+      "status": "active",
+      "complianceStatus": "pending-review",
+      "hasProjectStructure": false
+    },
+    {
+      "name": "Discord AI Chatbot", 
+      "file": "workflows/discord-ai-chatbot.json",
+      "projectDirectory": "projects/discord-ai-chatbot/",
+      "category": "integrations",
+      "description": "AI-powered Discord bot integration",
+      "status": "active",
+      "complianceStatus": "pending-review",
+      "hasProjectStructure": true,
+      "phaseCount": 8
+    },
+    {
+      "name": "Discord Chatbot AI Enhanced",
+      "file": "workflows/discord-chatbot-ai.json", 
+      "projectDirectory": "projects/discord-chatbot/",
+      "category": "integrations",
+      "description": "Enhanced Discord chatbot with AI capabilities",
+      "status": "active",
+      "complianceStatus": "pending-review",
+      "hasProjectStructure": true,
+      "phaseCount": 8
+    },
+    {
+      "name": "Discord Basic Chatbot",
+      "file": "workflows/discord-chatbot.json",
+      "projectDirectory": "projects/discord-chatbot/",
+      "category": "integrations",
+      "description": "Basic Discord chatbot functionality", 
+      "status": "active",
+      "complianceStatus": "pending-review",
+      "hasProjectStructure": true,
+      "phaseCount": 8
+    },
+    {
+      "name": "Expense Approval API",
+      "file": "workflows/expense-approval-api.json",
+      "projectDirectory": "projects/expense-approval/",
+      "category": "automation", 
+      "description": "API-based expense approval workflow",
+      "status": "active",
+      "complianceStatus": "pending-review",
+      "hasProjectStructure": true,
+      "phaseCount": 1
+    },
+    {
+      "name": "Expense Approval Workflow",
+      "file": "workflows/expense-approval-workflow.json",
+      "projectDirectory": "projects/expense-approval/",
+      "category": "automation",
+      "description": "Complete expense approval process",
+      "status": "active", 
+      "complianceStatus": "pending-review",
+      "hasProjectStructure": true,
+      "phaseCount": 1
+    },
+    {
+      "name": "Hello World Test",
+      "file": "workflows/hello-world-test.json",
+      "projectDirectory": "projects/hello-world-test/",
+      "category": "samples",
+      "description": "Basic test workflow for validation",
+      "status": "sample",
+      "complianceStatus": "compliant",
+      "hasProjectStructure": false
+    }
+  ],
+
+  "referenceLinks": [
+    "https://docs.n8n.io/",
+    "https://docs.n8n.io/nodes/", 
+    "https://docs.n8n.io/code/expressions/",
+    "https://community.n8n.io/",
+    "https://github.com/n8n-io/n8n"
+  ],
+
+  "developmentWorkflow": {
+    "newProjectCreation": {
+      "step1": "Determine workflow name and category",
+      "step2": "Create project directory: mkdir -p projects/[workflow-name]",
+      "step3": "Initialize phase directories within project",
+      "step4": "Begin phase-based development process",
+      "step5": "Store all artifacts in project-specific phase directories"
+    },
+    "phaseBasedDevelopment": {
+      "description": "Each project follows structured phase-based development",
+      "phases": [
+        "phase-1-requirements: Initial requirements capture",
+        "phase-2-context: Context analysis and inference", 
+        "phase-3-discovery: Node discovery and exploration",
+        "phase-4-blueprint: Design blueprints and architecture",
+        "phase-5-validation: Pre-validation and testing",
+        "phase-6-workflow: JSON generation and validation",
+        "phase-7-final: Final review and patches",
+        "phase-8-deployment: Deployment and results"
+      ]
+    },
+    "artifactManagement": {
+      "isolation": "Complete project isolation prevents cross-contamination",
+      "traceability": "Full development history preserved per project",
+      "reusability": "Project structures can be templated for similar workflows",
+      "maintenance": "Easy to locate and update project-specific artifacts"
+    }
+  },
+
+  "metadata": {
+    "configVersion": "1.0.0",
+    "compatibleN8nVersion": ">=1.0.0",
+    "workflowCount": 7,
+    "activeProjects": 3,
+    "projectsWithStructure": 3,
+    "complianceLevel": "workflow.md-v2025.7-strict",
+    "mcpIntegrationEnabled": true,
+    "projectManagementEnabled": true,
+    "lastValidated": "2025-07-28T08:27:54+09:00"
+  }
+}

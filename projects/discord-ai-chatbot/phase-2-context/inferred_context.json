@@ -1,0 +1,25 @@
+{
+  "workflowType": "eventDriven",
+  "triggerSource": "discordWebhook",
+  "processingSteps": [
+    "receiveWebhookEvent",
+    "parseDiscordMessage",
+    "checkMention",
+    "preparePrompt",
+    "callAIAgent",
+    "formatResponse",
+    "sendDiscordMessage"
+  ],
+  "errorScenarios": [
+    "webhookTimeout",
+    "invalidMessageFormat",
+    "openAIRateLimit",
+    "discordAPIError",
+    "networkFailure"
+  ],
+  "securityConsiderations": [
+    "validateWebhookSignature",
+    "sanitizeUserInput",
+    "limitResponseLength"
+  ]
+}
