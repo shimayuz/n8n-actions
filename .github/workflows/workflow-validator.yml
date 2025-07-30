@@ -209,30 +209,35 @@ jobs:
           script: |
             const status = '${{ steps.validate.outputs.validation_status }}';
             
-            // Remove both labels first
+            // Try to add labels only if they exist
+            // Skip if we don't have permission to create labels
             try {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                name: 'validation-passed'
-              });
-            } catch (e) {}
-            
-            try {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                name: 'validation-failed'
-              });
-            } catch (e) {}
-            
-            // Add appropriate label
-            const label = status === 'passed' ? 'validation-passed' : 'validation-failed';
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              labels: [label]
-            });
+              // First check if labels exist
+              const labelName = status === 'passed' ? 'validation-passed' : 'validation-failed';
+              
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName
+                });
+                
+                // Label exists, try to add it
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  labels: [labelName]
+                });
+                
+                console.log(`Successfully added label: ${labelName}`);
+              } catch (e) {
+                if (e.status === 404) {
+                  console.log(`Label '${labelName}' does not exist. Skipping label assignment.`);
+                } else {
+                  console.log(`Could not add label: ${e.message}`);
+                }
+              }
+            } catch (e) {
+              console.log(`Label operation skipped: ${e.message}`);
+            }

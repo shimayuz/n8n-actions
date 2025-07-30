@@ -18,6 +18,7 @@ workflow_settings:
   pr_template: .github/PULL_REQUEST_TEMPLATE/workflow.md
   
   # Default labels to apply to workflow PRs
+  # Note: These labels must exist in the repository before they can be applied
   labels:
     - workflow
     - auto-generated
@@ -80,6 +81,7 @@ notifications:
   create_issues_on_failure: true
   
   # Issue labels
+  # Note: These labels must exist in the repository before they can be applied
   issue_labels:
     - bug
     - workflow-sync

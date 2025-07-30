@@ -138,13 +138,28 @@ Co-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.co
               
               # Create PR if auto_create_pr is true
               if [ "${{ github.event.inputs.auto_create_pr }}" = "true" ]; then
-                gh pr create \
+                # Create PR without labels first
+                PR_URL=$(gh pr create \
                   --title "feat: Add $WORKFLOW_NAME workflow" \
                   --body-file .github/PULL_REQUEST_TEMPLATE/workflow.md \
                   --base main \
                   --head "$BRANCH_NAME" \
-                  --label "workflow,auto-generated" \
-                  --assignee "${{ github.actor }}" || echo "PR already exists"
+                  --assignee "${{ github.actor }}" 2>&1) || PR_URL=""
+                
+                if [ -n "$PR_URL" ] && [[ "$PR_URL" == *"github.com"* ]]; then
+                  echo "PR created: $PR_URL"
+                  # Extract PR number from URL
+                  PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+                  
+                  # Try to add labels if they exist (ignore errors)
+                  for label in "workflow" "auto-generated"; do
+                    gh label list --search "$label" | grep -q "^$label" && \
+                      gh pr edit "$PR_NUMBER" --add-label "$label" 2>/dev/null || \
+                      echo "Label '$label' not found or cannot be added"
+                  done
+                else
+                  echo "PR already exists or creation failed"
+                fi
               fi
               
               # Update state file

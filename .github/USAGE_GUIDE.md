@@ -21,7 +21,29 @@
 | `N8N_API_URL` | n8nインスタンスのAPI URL | `https://your-n8n.com/api/v1` |
 | `N8N_API_KEY` | n8n APIキー | `n8n_api_xxxxx` |
 
-### 2. 権限の確認
+### 2. ラベルの作成（推奨）
+
+システムは以下のラベルを使用します（存在しない場合は自動スキップ）：
+
+| ラベル名 | 用途 | 色（推奨） |
+|---------|------|-----------|
+| `workflow` | ワークフロー関連PR | #0052CC |
+| `auto-generated` | 自動生成されたPR | #FBCA04 |
+| `validation-passed` | 検証成功 | #0E8A16 |
+| `validation-failed` | 検証失敗 | #D93F0B |
+| `bug` | エラー報告Issue | #D73A4A |
+| `workflow-sync` | 同期関連Issue | #5319E7 |
+
+**作成方法**:
+```bash
+# GitHub CLIを使用
+gh label create workflow --description "n8n workflow related" --color 0052CC
+gh label create auto-generated --description "Automatically generated" --color FBCA04
+gh label create validation-passed --description "Validation passed" --color 0E8A16
+gh label create validation-failed --description "Validation failed" --color D93F0B
+```
+
+### 3. 権限の確認
 
 Actions → General → Workflow permissions で以下を確認：
 - ✅ Read and write permissions

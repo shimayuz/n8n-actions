@@ -271,15 +271,35 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             // Create an issue if sync failed
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `❌ n8n Workflow Sync Failed - ${new Date().toISOString().split('T')[0]}`,
-              body: `The workflow sync to n8n failed for commit ${context.sha}.
+            const issueBody = `The workflow sync to n8n failed for commit ${context.sha}.
               
               **Commit**: ${context.payload.head_commit.message}
               **Author**: @${context.payload.head_commit.author.username}
               
-              Please check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
-              labels: ['bug', 'workflow-sync']
-            });
+              Please check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`;
+            
+            try {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `❌ n8n Workflow Sync Failed - ${new Date().toISOString().split('T')[0]}`,
+                body: issueBody
+              });
+              
+              // Try to add labels if they exist (ignore errors)
+              const labels = ['bug', 'workflow-sync'];
+              for (const label of labels) {
+                try {
+                  await github.rest.issues.getLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label
+                  });
+                  // Label exists, we can safely reference it in issue creation
+                } catch (e) {
+                  console.log(`Label '${label}' does not exist, skipping`);
+                }
+              }
+            } catch (error) {
+              console.error('Failed to create issue:', error.message);
+            }
