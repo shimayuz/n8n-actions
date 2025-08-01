@@ -479,4 +479,134 @@ cat .github/workflow-metrics.json | jq '.performance.average_sync_duration'
 
 ---
 
-最終更新: 2025年1月30日
+## 📋 n8n ワークフロー開発必須ルール
+
+**重要**: このリポジトリでn8nワークフローを作成する際は、必ず以下のルールに従ってください。
+
+### 1. Spec-Driven Development（仕様駆動開発）
+
+n8nワークフロー開発は必ず以下の手順で実施：
+
+```bash
+# Step 1: 仕様作成
+/kiro:spec-init [workflow-name]
+/kiro:spec-requirements [workflow-name]
+/kiro:spec-design [workflow-name]
+/kiro:spec-tasks [workflow-name]
+
+# Step 2: タスクベースの実装
+# tasks.mdに従って1タスクずつ実装
+```
+
+### 2. タスク実装ルール
+
+#### Claude AIへの指示形式
+
+```markdown
+# ✅ 良い例
+"Task 3.1を実装して。Airtop APIでLinkedInスクレイピング。
+- ノードタイプ: n8n-nodes-base.httpRequest
+- 認証: httpHeaderAuth
+- リトライ: maxTries: 3
+- エラー処理: continueOnFail: true"
+
+# ❌ 悪い例
+"LinkedInスクレイピングを追加して"
+```
+
+### 3. コミット規約（n8nワークフロー専用）
+
+```bash
+git commit -m "<type>: implement Task <number> - <description>
+
+- <具体的な変更内容>
+- <追加したノード>
+- <設定した接続>
+
+Task: <task-number>
+Status: <started|completed|blocked>
+Nodes added: <count>
+Errors: <any errors>"
+```
+
+### 4. 段階的検証
+
+各タスク完了時に必須：
+
+```bash
+# 1. JSON検証
+jq empty projects/[workflow-name]/[workflow-name].json
+
+# 2. ノード数確認
+jq '.nodes | length' projects/[workflow-name]/[workflow-name].json
+
+# 3. n8nでインポートテスト
+# 各タスク後に必ずインポートして動作確認
+```
+
+### 5. エラー対処の原則
+
+```bash
+# エラー発生時は即座にロールバック
+git reset --hard HEAD~1
+
+# 問題の特定
+git diff HEAD~1 HEAD -- [workflow].json
+
+# Claude AIに明確なエラー報告
+"インポートエラー: [具体的なエラーメッセージ]
+最後に追加したノード: [ノード名]
+Task 8.4まで正常動作確認済み"
+```
+
+### 6. 避けるべきアンチパターン
+
+- ❌ **過剰な機能追加**: GDPR準拠、セキュリティ監査などn8n本来の範囲外の機能
+- ❌ **巨大コミット**: 複数タスクを1つのコミットにまとめる
+- ❌ **検証スキップ**: 動作確認せずに次のタスクへ進む
+- ❌ **曖昧な仕様**: 具体的なノードタイプや設定を指定しない
+
+### 7. トラブルシューティング
+
+#### よくあるn8nエラー
+
+```javascript
+// 1. "Cannot read property 'toLowerCase' of undefined"
+// 解決: undefined チェックを追加
+"$json.field.toLowerCase()" → "($json.field || '').toLowerCase()"
+
+// 2. 認証パラメータエラー
+// 解決: authenticationフィールドを追加
+"parameters": {
+  "authentication": "airtableOAuth2Api",  // 必須
+  ...
+}
+
+// 3. settings の型エラー
+// 解決: boolean → string
+"saveDataSuccessExecution": "all",  // string型
+"saveDataErrorExecution": "none"    // string型
+```
+
+### 8. 開発の記録
+
+すべての開発過程は自動的に記録されます：
+
+- `.github/workflow-logs/task-history.log`: タスク履歴
+- `.github/workflow-logs/development-log.md`: 開発ログ
+- `progress-report.md`: 進捗レポート
+
+### 9. チェックリスト
+
+n8nワークフロー完成時の確認事項：
+
+- [ ] Kiro仕様書作成完了
+- [ ] tasks.mdのタスクを順次実装
+- [ ] 各タスクごとにコミット
+- [ ] 各段階でn8nインポート成功
+- [ ] README.mdに実装済み機能を記録
+- [ ] 最終的にエラーなく動作
+
+---
+
+最終更新: 2025年8月1日

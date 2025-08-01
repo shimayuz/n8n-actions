@@ -1,0 +1,46 @@
+{
+  "name": "C-Suite Outreach Automation - Minimal",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Every 2 Hours Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "content": "# C-Suite Outreach Automation\n\nこのワークフローはLinkedInからCスイートリードを自動的に特定し、マルチチャネルでアウトリーチを実行します。",
+        "height": 200,
+        "width": 400
+      },
+      "id": "intro-sticky",
+      "name": "Workflow Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [250, 50]
+    }
+  ],
+  "connections": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 3600
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "versionId": "minimal-v1"
+}

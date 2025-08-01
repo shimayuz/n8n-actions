@@ -1,0 +1,68 @@
+name: n8n Workflow Task
+description: Track a specific task in workflow development
+title: "[Task X.X] "
+labels: ["workflow", "n8n", "task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## n8n Workflow Development Task
+
+  - type: input
+    id: task-number
+    attributes:
+      label: Task Number
+      description: "e.g., 3.1, 4.2"
+      placeholder: "X.X"
+    validations:
+      required: true
+
+  - type: input
+    id: task-name
+    attributes:
+      label: Task Name
+      description: "Brief task description"
+      placeholder: "e.g., Airtop API integration"
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: "What needs to be implemented?"
+      placeholder: |
+        - Node type to add
+        - Configuration needed
+        - Connections required
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Implementation Checklist
+      options:
+        - label: Node added to workflow JSON
+        - label: Configuration completed
+        - label: Connections established
+        - label: JSON validation passed
+        - label: README updated
+        - label: Committed with proper message
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      description: "Any special considerations or dependencies"

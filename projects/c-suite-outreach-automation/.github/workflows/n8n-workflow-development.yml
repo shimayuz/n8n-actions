@@ -1,0 +1,192 @@
+name: n8n Workflow Development Tracker
+
+on:
+  push:
+    branches: [ main, feature/* ]
+    paths:
+      - '**/*.json'
+      - '**/*.md'
+      - '.kiro/specs/**'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      task_name:
+        description: 'Task name to track'
+        required: true
+        type: string
+      task_status:
+        description: 'Task status'
+        required: true
+        type: choice
+        options:
+          - started
+          - in-progress
+          - completed
+          - blocked
+
+jobs:
+  track-workflow-development:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: |
+        npm install -g jq
+        npm install -g @anthropic/claude-code
+
+    # ワークフロー検証
+    - name: Validate n8n Workflow JSON
+      run: |
+        echo "🔍 Validating workflow JSON..."
+        for file in projects/**/*.json; do
+          if [ -f "$file" ]; then
+            echo "Checking: $file"
+            jq empty "$file" || exit 1
+            
+            # n8n必須フィールドのチェック
+            jq -e '.name and .nodes and .connections' "$file" || {
+              echo "❌ Missing required n8n fields in $file"
+              exit 1
+            }
+          fi
+        done
+        echo "✅ All JSON files are valid"
+
+    # ノード数と進捗の追跡
+    - name: Track Workflow Progress
+      run: |
+        WORKFLOW_FILE="projects/c-suite-outreach-automation/c-suite-outreach-automation.json"
+        if [ -f "$WORKFLOW_FILE" ]; then
+          NODE_COUNT=$(jq '.nodes | length' "$WORKFLOW_FILE")
+          echo "📊 Current node count: $NODE_COUNT"
+          
+          # 進捗レポートの生成
+          cat > progress-report.md << EOF
+        # Workflow Development Progress Report
+        
+        ## Stats
+        - **Total Nodes**: $NODE_COUNT
+        - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        - **Branch**: ${{ github.ref_name }}
+        - **Commit**: ${{ github.sha }}
+        
+        ## Node Types Distribution
+        $(jq -r '.nodes | group_by(.type) | map({type: .[0].type, count: length}) | .[] | "- \(.type): \(.count)"' "$WORKFLOW_FILE")
+        
+        ## Implemented Features
+        $(jq -r '.nodes | map(.name) | .[] | "- [x] \(.)"' "$WORKFLOW_FILE" | head -20)
+        EOF
+        fi
+
+    # Git diffから変更内容を抽出
+    - name: Extract Changes
+      if: github.event_name == 'push'
+      run: |
+        echo "📝 Changes in this commit:"
+        git diff --name-status HEAD~1 HEAD | grep -E '\.(json|md)$' || true
+        
+        # 追加されたノードを検出
+        if [ -f "projects/c-suite-outreach-automation/c-suite-outreach-automation.json" ]; then
+          git diff HEAD~1 HEAD -- "projects/c-suite-outreach-automation/c-suite-outreach-automation.json" | \
+          grep '^+.*"name":' | sed 's/.*"name": "\(.*\)".*/- Added node: \1/' || true
+        fi
+
+    # タスク完了状況の記録
+    - name: Record Task Completion
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        TASK_NAME="${{ github.event.inputs.task_name }}"
+        TASK_STATUS="${{ github.event.inputs.task_status }}"
+        TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        
+        # タスクログファイルに追記
+        mkdir -p .github/workflow-logs
+        echo "[$TIMESTAMP] Task: $TASK_NAME - Status: $TASK_STATUS" >> .github/workflow-logs/task-history.log
+        
+        # タスクステータスをJSONで保存
+        cat > .github/workflow-logs/current-task.json << EOF
+        {
+          "task": "$TASK_NAME",
+          "status": "$TASK_STATUS",
+          "timestamp": "$TIMESTAMP",
+          "commit": "${{ github.sha }}",
+          "actor": "${{ github.actor }}"
+        }
+        EOF
+
+    # Claude AIとの対話ログを保存
+    - name: Save Development Conversation
+      if: github.event_name == 'push'
+      run: |
+        # コミットメッセージから開発内容を抽出
+        COMMIT_MSG=$(git log -1 --pretty=%B)
+        
+        # 開発ログに追記
+        cat >> .github/workflow-logs/development-log.md << EOF
+        
+        ## $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        
+        ### Commit: ${{ github.sha }}
+        **Message**: $COMMIT_MSG
+        
+        ### Changes:
+        $(git diff --stat HEAD~1 HEAD)
+        
+        ---
+        EOF
+
+    # 進捗レポートをアーティファクトとして保存
+    - name: Upload Progress Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: workflow-progress-${{ github.run_number }}
+        path: |
+          progress-report.md
+          .github/workflow-logs/
+
+    # PRコメントに進捗を投稿
+    - name: Comment PR with Progress
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('progress-report.md', 'utf8');
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: report
+          });
+
+    # Slackへの通知（オプション）
+    - name: Notify Progress
+      if: env.SLACK_WEBHOOK_URL != ''
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        NODE_COUNT=$(jq '.nodes | length' "projects/c-suite-outreach-automation/c-suite-outreach-automation.json" 2>/dev/null || echo "0")
+        curl -X POST $SLACK_WEBHOOK_URL \
+          -H 'Content-type: application/json' \
+          -d "{
+            \"text\": \"n8n Workflow Update\",
+            \"blocks\": [{
+              \"type\": \"section\",
+              \"text\": {
+                \"type\": \"mrkdwn\",
+                \"text\": \"*Workflow Development Update*\n• Nodes: $NODE_COUNT\n• Branch: ${{ github.ref_name }}\n• Actor: ${{ github.actor }}\"
+              }
+            }]
+          }"

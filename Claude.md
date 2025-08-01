@@ -43,8 +43,15 @@ Example:
 - 「n8n で〇〇を自動化したい」などユーザー意図が入力で検出された場合にのみ `workflow.md` を参照する（常時ロードはしない）。
 - Spec‑Driven Development の全工程（Requirements → Design → Tasks → Implementation）でも、n8n 関連内容は随時 `workflow.md` を参照し、指針逸脱が無いように維持する。
 - `workflow.md` がプロジェクトの **steering ドキュメント** の一つとして扱われる場合、下記 *Steering Configuration* に従いインクルージョンモード（Always / Conditional / Manual）を適切に設定する。
+- **重要**: n8nワークフロー開発時は必ず`.github/USAGE_GUIDE.md`の「n8n ワークフロー開発必須ルール」セクションに従うこと。
 
 ### n8n Workflow → GitHub PR 完全フロー
+
+**注意**: n8nワークフロー開発は必ず以下の手順に従うこと：
+1. Kiroコマンドで仕様作成（`/kiro:spec-init`, `/kiro:spec-requirements`, `/kiro:spec-design`, `/kiro:spec-tasks`）
+2. tasks.mdに従って1タスクずつ実装
+3. 各タスク完了時にJSON検証とn8nインポートテスト
+4. 詳細は`.github/USAGE_GUIDE.md`を参照
 
 n8n用ワークフローの作成からGitHubへのPR作成まで、以下の一連の流れで実行する：
 
