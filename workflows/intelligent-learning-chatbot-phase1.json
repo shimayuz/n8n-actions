@@ -1,0 +1,313 @@
+{
+  "name": "Intelligent Learning Chatbot - Phase 1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatbot",
+        "responseMode": "responseNode",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [260, 340],
+      "webhookId": "chatbot-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.message}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "input-validation",
+      "name": "Input Validation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 340]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "system-prompt",
+              "name": "systemPrompt",
+              "value": "あなたは親切で知識豊富なアシスタントです。ユーザーの質問に対して、正確で役立つ回答を提供してください。回答は簡潔で理解しやすいものにしてください。",
+              "type": "string"
+            },
+            {
+              "id": "user-message",
+              "name": "userMessage",
+              "value": "={{$json.message}}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            },
+            {
+              "id": "session-id",
+              "name": "sessionId",
+              "value": "={{$json.sessionId || $uuid()}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-system-prompt",
+      "name": "Set System Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [700, 260]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": "gpt-3.5-turbo",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "={{$json.systemPrompt}}"
+            },
+            {
+              "role": "user",
+              "content": "={{$json.userMessage}}"
+            }
+          ]
+        },
+        "simplifyOutput": true,
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 1000,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0
+        }
+      },
+      "id": "openai-chat",
+      "name": "OpenAI Chat",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
+      "position": [920, 260],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "response",
+              "name": "response",
+              "value": "={{$json.message.content}}",
+              "type": "string"
+            },
+            {
+              "id": "session-id-response",
+              "name": "sessionId",
+              "value": "={{$('Set System Prompt').item.json.sessionId}}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp-response",
+              "name": "timestamp",
+              "value": "={{$('Set System Prompt').item.json.timestamp}}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1140, 260]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1360, 260]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-message",
+              "name": "error",
+              "value": "メッセージが空です。'message'フィールドに質問を入力してください。",
+              "type": "string"
+            },
+            {
+              "id": "error-status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [700, 420]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "error-webhook-response",
+      "name": "Error Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Input Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Validation": {
+      "main": [
+        [
+          {
+            "node": "Set System Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set System Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Response": {
+      "main": [
+        [
+          {
+            "node": "Error Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "Asia/Tokyo"
+  },
+  "versionId": "phase-1-mvp",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "intelligent-learning-chatbot"
+  },
+  "id": "intelligent-learning-chatbot-phase1",
+  "tags": [
+    {
+      "name": "chatbot",
+      "createdAt": "2025-08-06T10:45:00.000Z"
+    },
+    {
+      "name": "phase1",
+      "createdAt": "2025-08-06T10:45:00.000Z"
+    },
+    {
+      "name": "openai",
+      "createdAt": "2025-08-06T10:45:00.000Z"
+    }
+  ]
+}
