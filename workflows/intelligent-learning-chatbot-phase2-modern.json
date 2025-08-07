@@ -1,0 +1,735 @@
+{
+  "name": "Intelligent Learning Chatbot - Phase 2 (Modern AI Agent)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatbot",
+        "responseMode": "responseNode",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [260, 340],
+      "webhookId": "chatbot-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.message}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "input-validation",
+      "name": "Input Validation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 340]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "session-id",
+              "name": "sessionId",
+              "value": "={{$json.sessionId || $uuid()}}",
+              "type": "string"
+            },
+            {
+              "id": "user-message",
+              "name": "userMessage",
+              "value": "={{$json.message}}",
+              "type": "string"
+            },
+            {
+              "id": "user-id",
+              "name": "userId",
+              "value": "={{$json.userId || 'anonymous'}}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-session",
+      "name": "Extract Session Info",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [700, 260]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Check if session exists and get history\nSELECT \n  s.session_id,\n  s.user_id,\n  s.is_active,\n  COALESCE(\n    (SELECT json_agg(\n      json_build_object(\n        'role', CASE \n          WHEN c.user_message IS NOT NULL THEN 'user'\n          ELSE 'assistant'\n        END,\n        'content', COALESCE(c.user_message, c.ai_response),\n        'timestamp', c.created_at\n      ) ORDER BY c.created_at\n    )\n    FROM conversations c\n    WHERE c.session_id = $1::uuid\n    AND c.created_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'\n    LIMIT 10), '[]'::json\n  ) as conversation_history\nFROM sessions s\nWHERE s.session_id = $1::uuid\nAND s.is_active = true;",
+        "options": {
+          "queryParams": "={{$json.sessionId}}"
+        }
+      },
+      "id": "check-session",
+      "name": "Check Session & Load History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [920, 260],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.length}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "session-exists",
+      "name": "Session Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1140, 260]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "sessions",
+        "columns": "session_id,user_id,started_at,last_activity",
+        "options": {
+          "returnFields": "*"
+        }
+      },
+      "id": "create-session",
+      "name": "Create New Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1360, 380],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "sessions",
+        "updateKey": "session_id",
+        "columns": "last_activity",
+        "options": {
+          "returnFields": "*"
+        }
+      },
+      "id": "update-session",
+      "name": "Update Session Activity",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1360, 140],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-session",
+      "name": "Merge Session Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1580, 260]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "insertMode": "override",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "system",
+              "message": "あなたは親切で知識豊富なアシスタントです。ユーザーとの会話履歴を参考にして、一貫性のある応答を提供してください。過去の会話内容を踏まえて、文脈に沿った自然な応答を心がけてください。",
+              "hideFromUI": false
+            }
+          ]
+        }
+      },
+      "id": "memory-init",
+      "name": "Initialize Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [1800, 140]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "insertMode": "insert",
+        "messages": {
+          "messageValues": "={{$json.conversation_history.map(msg => ({type: msg.role === 'user' ? 'user' : 'ai', message: msg.content, hideFromUI: false}))}}"
+        }
+      },
+      "id": "load-history",
+      "name": "Load Conversation History",
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [2020, 140]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$('Extract Session Info').item.json.userMessage}}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "あなたは親切で知識豊富なアシスタントです。会話履歴を参考にして、ユーザーの質問に対して適切で一貫性のある応答を提供してください。\n\n重要な指示:\n- 過去の会話内容を踏まえて応答すること\n- ユーザーが以前提供した情報を覚えていること\n- 自然で親しみやすい口調を保つこと\n- 必要に応じて過去の会話を参照すること",
+          "maxIterations": 10,
+          "returnIntermediateSteps": false,
+          "passthroughBinaryImages": true,
+          "enableStreaming": false
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [2240, 260]
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "options": {
+          "temperature": 0.7,
+          "maxTokensToSample": 1000,
+          "topP": 0.9
+        }
+      },
+      "id": "openai-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [2240, 420],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{$('Extract Session Info').item.json.sessionId}}"
+      },
+      "id": "window-buffer-memory",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [2240, 580]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "conversations",
+        "columns": "session_id,user_message,ai_response,user_id,metadata",
+        "options": {
+          "returnFields": "id,session_id,created_at"
+        }
+      },
+      "id": "save-conversation",
+      "name": "Save Conversation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2460, 260],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "insertMode": "insert",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "user",
+              "message": "={{$('Extract Session Info').item.json.userMessage}}",
+              "hideFromUI": false
+            },
+            {
+              "type": "ai",
+              "message": "={{$json.output}}",
+              "hideFromUI": false
+            }
+          ]
+        }
+      },
+      "id": "update-memory",
+      "name": "Update Memory with New Messages",
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [2680, 140]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "response",
+              "name": "response",
+              "value": "={{$('AI Agent').item.json.output}}",
+              "type": "string"
+            },
+            {
+              "id": "session-id-response",
+              "name": "sessionId",
+              "value": "={{$('Extract Session Info').item.json.sessionId}}",
+              "type": "string"
+            },
+            {
+              "id": "conversation-id",
+              "name": "conversationId",
+              "value": "={{$('Save Conversation').item.json.id}}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp-response",
+              "name": "timestamp",
+              "value": "={{$('Save Conversation').item.json.created_at}}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "memory-size",
+              "name": "memorySize",
+              "value": "={{$('Window Buffer Memory').item.json.messagesCount || 0}}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [2900, 260]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3120, 260]
+    },
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [920, 540]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-data",
+              "name": "errorData",
+              "value": "={{JSON.stringify($json)}}",
+              "type": "string"
+            },
+            {
+              "id": "backup-timestamp",
+              "name": "timestamp",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            },
+            {
+              "id": "session-backup",
+              "name": "sessionId",
+              "value": "={{$('Extract Session Info').item.json.sessionId}}",
+              "type": "string"
+            },
+            {
+              "id": "error-message",
+              "name": "errorMessage",
+              "value": "={{$json.message || 'Unknown error'}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-backup",
+      "name": "Prepare Backup Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1140, 540]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=backup/conversation_{{$json.sessionId}}_{{$now.format('yyyy-MM-dd-HH-mm-ss')}}.json",
+        "options": {}
+      },
+      "id": "file-backup",
+      "name": "File Backup",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [1360, 540]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-message",
+              "name": "error",
+              "value": "メッセージが空です。'message'フィールドに質問を入力してください。",
+              "type": "string"
+            },
+            {
+              "id": "error-status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [700, 420]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "error-webhook-response",
+      "name": "Error Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Input Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Validation": {
+      "main": [
+        [
+          {
+            "node": "Extract Session Info",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Session Info": {
+      "main": [
+        [
+          {
+            "node": "Check Session & Load History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Session & Load History": {
+      "main": [
+        [
+          {
+            "node": "Session Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Session Exists?": {
+      "main": [
+        [
+          {
+            "node": "Update Session Activity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create New Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Session Activity": {
+      "main": [
+        [
+          {
+            "node": "Merge Session Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Session": {
+      "main": [
+        [
+          {
+            "node": "Merge Session Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Session Data": {
+      "main": [
+        [
+          {
+            "node": "Initialize Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Memory": {
+      "main": [
+        [
+          {
+            "node": "Load Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Conversation History": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Save Conversation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Memory with New Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Conversation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Memory with New Messages": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Backup Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Backup Data": {
+      "main": [
+        [
+          {
+            "node": "File Backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Response": {
+      "main": [
+        [
+          {
+            "node": "Error Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "Asia/Tokyo"
+  },
+  "versionId": "phase-2-modern-ai-agent",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "intelligent-learning-chatbot"
+  },
+  "id": "intelligent-learning-chatbot-phase2-modern",
+  "tags": [
+    {
+      "name": "chatbot",
+      "createdAt": "2025-08-06T11:30:00.000Z"
+    },
+    {
+      "name": "phase2",
+      "createdAt": "2025-08-06T11:30:00.000Z"
+    },
+    {
+      "name": "ai-agent",
+      "createdAt": "2025-08-06T11:30:00.000Z"
+    },
+    {
+      "name": "memory-manager",
+      "createdAt": "2025-08-06T11:30:00.000Z"
+    },
+    {
+      "name": "postgresql",
+      "createdAt": "2025-08-06T11:30:00.000Z"
+    }
+  ]
+}
