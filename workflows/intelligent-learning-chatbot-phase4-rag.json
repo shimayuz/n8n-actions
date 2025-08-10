@@ -1,0 +1,871 @@
+{
+  "name": "Intelligent Learning Chatbot - Phase 4 (RAG Implementation)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatbot/rag",
+        "responseMode": "responseNode",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [260, 340],
+      "webhookId": "chatbot-rag-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.message}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "input-validation",
+      "name": "Input Validation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 340]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{$json.message}}",
+              "type": "string"
+            },
+            {
+              "id": "session-id",
+              "name": "sessionId",
+              "value": "={{$json.sessionId || $uuid()}}",
+              "type": "string"
+            },
+            {
+              "id": "user-id",
+              "name": "userId",
+              "value": "={{$json.userId || 'anonymous'}}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{$now.toISO()}}",
+              "type": "string"
+            },
+            {
+              "id": "search-threshold",
+              "name": "searchThreshold",
+              "value": "={{$json.threshold || 0.7}}",
+              "type": "number"
+            },
+            {
+              "id": "top-k",
+              "name": "topK",
+              "value": "={{$json.topK || 5}}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-query",
+      "name": "Extract Query",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [700, 260]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "text": "={{$json.query}}",
+        "options": {}
+      },
+      "id": "generate-embedding",
+      "name": "Generate Embedding",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [920, 260],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "collection": "knowledge_base",
+        "prompt": "={{$('Extract Query').item.json.query}}",
+        "topK": "={{$('Extract Query').item.json.topK}}"
+      },
+      "id": "vector-store-retriever",
+      "name": "Vector Store Retriever",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreRetriever",
+      "typeVersion": 1,
+      "position": [1140, 380]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rag-context",
+              "name": "ragContext",
+              "value": "={{$json.documents ? $json.documents.map(doc => doc.pageContent).join('\\n\\n---\\n\\n') : ''}}",
+              "type": "string"
+            },
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{$('Extract Query').item.json.query}}",
+              "type": "string"
+            },
+            {
+              "id": "session-id",
+              "name": "sessionId",
+              "value": "={{$('Extract Query').item.json.sessionId}}",
+              "type": "string"
+            },
+            {
+              "id": "user-id",
+              "name": "userId",
+              "value": "={{$('Extract Query').item.json.userId}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "build-context",
+      "name": "Build RAG Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1360, 260]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "以下の参考情報を基に、ユーザーの質問に答えてください。\n\n## 参考情報:\n{{$json.ragContext}}\n\n## ユーザーの質問:\n{{$json.query}}\n\n## 回答指示:\n- 参考情報を活用して具体的に回答\n- 参考情報にない場合は一般的な知識で補完\n- 簡潔で分かりやすい説明を心がける",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "あなたは知識豊富なAIアシスタントです。提供された参考情報を活用して、正確で役立つ回答を提供してください。",
+          "maxIterations": 5,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Agent with RAG",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1580, 260]
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "options": {
+          "temperature": 0.5,
+          "maxTokensToSample": 1500,
+          "topP": 0.9
+        }
+      },
+      "id": "openai-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [1580, 420],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{$('Extract Query').item.json.sessionId}}",
+        "windowSize": 10
+      },
+      "id": "memory-buffer",
+      "name": "Memory Buffer",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [1580, 540]
+    },
+    {
+      "parameters": {
+        "supabaseProjectUrl": "={{$env.SUPABASE_URL}}",
+        "tableName": "knowledge_base",
+        "queryName": "match_documents",
+        "options": {}
+      },
+      "id": "vector-store-supabase",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [1140, 500],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "conversations",
+        "dataToSend": "defineBelow",
+        "fieldsToSend": {
+          "values": [
+            {
+              "field": "session_id",
+              "fieldValue": "={{$('Build RAG Context').item.json.sessionId}}"
+            },
+            {
+              "field": "user_message",
+              "fieldValue": "={{$('Build RAG Context').item.json.query}}"
+            },
+            {
+              "field": "ai_response",
+              "fieldValue": "={{$json.output}}"
+            },
+            {
+              "field": "user_id",
+              "fieldValue": "={{$('Build RAG Context').item.json.userId}}"
+            },
+            {
+              "field": "context_type",
+              "fieldValue": "rag"
+            },
+            {
+              "field": "metadata",
+              "fieldValue": "={{JSON.stringify({ragContext: $('Build RAG Context').item.json.ragContext.substring(0, 500)})}}"
+            }
+          ]
+        },
+        "options": {
+          "returnFields": "id,created_at"
+        }
+      },
+      "id": "save-conversation",
+      "name": "Save Conversation",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1800, 260],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "response",
+              "name": "response",
+              "value": "={{$('AI Agent with RAG').item.json.output}}",
+              "type": "string"
+            },
+            {
+              "id": "session-id",
+              "name": "sessionId",
+              "value": "={{$('Build RAG Context').item.json.sessionId}}",
+              "type": "string"
+            },
+            {
+              "id": "conversation-id",
+              "name": "conversationId",
+              "value": "={{$json.id}}",
+              "type": "string"
+            },
+            {
+              "id": "rag-used",
+              "name": "ragUsed",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [2020, 260]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2240, 260]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "knowledge/store",
+        "responseMode": "responseNode",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "knowledge-webhook",
+      "name": "Knowledge Storage Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [260, 700],
+      "webhookId": "knowledge-store-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.documents}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "validate-documents",
+      "name": "Validate Documents",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 700]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "documents",
+        "options": {}
+      },
+      "id": "split-documents",
+      "name": "Split Documents",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [700, 620]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "title",
+              "name": "title",
+              "value": "={{$json.title}}",
+              "type": "string"
+            },
+            {
+              "id": "content",
+              "name": "content",
+              "value": "={{$json.content}}",
+              "type": "string"
+            },
+            {
+              "id": "category",
+              "name": "category",
+              "value": "={{$json.category || 'general'}}",
+              "type": "string"
+            },
+            {
+              "id": "metadata",
+              "name": "metadata",
+              "value": "={{$json.metadata || {}}}",
+              "type": "json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-document",
+      "name": "Prepare Document",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [920, 620]
+    },
+    {
+      "parameters": {
+        "operation": "load",
+        "tableId": "knowledge_base",
+        "documentColumn": "content",
+        "metadataColumns": ["title", "category"]
+      },
+      "id": "store-in-vector",
+      "name": "Store in Vector DB",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [1140, 620],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "embedding-openai",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [1140, 760],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "ドキュメントを正常に保存しました",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-storage-response",
+      "name": "Format Storage Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1360, 620]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "respond-storage",
+      "name": "Respond Storage Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1580, 620]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-message",
+              "name": "error",
+              "value": "メッセージが空です",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "validation-error",
+      "name": "Validation Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [700, 420]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "validation-error-response",
+      "name": "Validation Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 420]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error-message",
+              "name": "error",
+              "value": "ドキュメントが空です",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "error",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "doc-validation-error",
+      "name": "Document Validation Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [700, 780]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "doc-error-response",
+      "name": "Document Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [920, 780]
+    },
+    {
+      "parameters": {
+        "content": "## 🎯 Phase 4 - RAG実装\n\n### 主要機能:\n1. **ベクトル検索**\n   - Supabase Vector Store使用\n   - OpenAI Embeddings (1536次元)\n   - 類似度検索\n\n2. **RAGコンテキスト構築**\n   - ナレッジベース検索\n   - コンテキスト結合\n   - AI Agentへの統合\n\n3. **ナレッジ管理**\n   - ドキュメント登録\n   - 自動Embedding生成\n   - Vector DBへの保存\n\n### エンドポイント:\n- POST /chatbot/rag\n- POST /knowledge/store\n\n### 使用方法:\n```json\n// RAGチャット\n{\n  \"message\": \"質問内容\",\n  \"sessionId\": \"xxx\",\n  \"topK\": 5\n}\n\n// ナレッジ登録\n{\n  \"documents\": [\n    {\n      \"title\": \"タイトル\",\n      \"content\": \"内容\",\n      \"category\": \"カテゴリ\"\n    }\n  ]\n}\n```",
+        "height": 520,
+        "width": 400
+      },
+      "id": "rag-note",
+      "name": "RAG Implementation Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [180, 900]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Input Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Validation": {
+      "main": [
+        [
+          {
+            "node": "Extract Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Query": {
+      "main": [
+        [
+          {
+            "node": "Generate Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embedding": {
+      "main": [
+        [
+          {
+            "node": "Build RAG Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Store Retriever": {
+      "ai_retriever": [
+        [
+          {
+            "node": "AI Agent with RAG",
+            "type": "ai_retriever",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Vector Store Retriever",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build RAG Context": {
+      "main": [
+        [
+          {
+            "node": "AI Agent with RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent with RAG": {
+      "main": [
+        [
+          {
+            "node": "Save Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent with RAG",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory Buffer": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent with RAG",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Conversation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Storage Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Documents": {
+      "main": [
+        [
+          {
+            "node": "Split Documents",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Document Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Documents": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Document": {
+      "main": [
+        [
+          {
+            "node": "Store in Vector DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Store in Vector DB",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Vector DB": {
+      "main": [
+        [
+          {
+            "node": "Format Storage Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Storage Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Storage Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Error": {
+      "main": [
+        [
+          {
+            "node": "Validation Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Validation Error": {
+      "main": [
+        [
+          {
+            "node": "Document Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "Asia/Tokyo"
+  },
+  "versionId": "phase-4-rag-fixed",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "intelligent-learning-chatbot-phase4-rag",
+    "description": "Phase 4: RAG implementation with Supabase vector store"
+  },
+  "id": "intelligent-learning-chatbot-phase4-rag",
+  "tags": [
+    {
+      "id": "chatbot",
+      "name": "Chatbot"
+    },
+    {
+      "id": "ai",
+      "name": "AI"
+    },
+    {
+      "id": "phase4",
+      "name": "Phase 4"
+    },
+    {
+      "id": "rag",
+      "name": "RAG"
+    },
+    {
+      "id": "vector-search",
+      "name": "Vector Search"
+    }
+  ]
+}
