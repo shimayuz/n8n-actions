@@ -1,0 +1,325 @@
+{
+  "name": "Customer Support Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "customer-support",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Email Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-email-trigger",
+      "notes": "顧客からのメールをWebhook経由で受信"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "emailFrom",
+              "value": "={{ $json.from || $json.sender || 'unknown@email.com' }}"
+            },
+            {
+              "name": "emailSubject", 
+              "value": "={{ $json.subject || 'No Subject' }}"
+            },
+            {
+              "name": "emailBody",
+              "value": "={{ $json.body || $json.content || $json.text || '' }}"
+            },
+            {
+              "name": "receivedAt",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "name": "Email Data Extraction",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 300],
+      "id": "email-data-extraction",
+      "notes": "受信メールから必要なデータを抽出・整形"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+          "mode": "list"
+        },
+        "options": {
+          "systemMessage": "あなたは顧客サポートの専門家です。受信したメールの内容を分析し、以下のカテゴリに分類してください：\n\n1. 技術的問題 (technical)\n2. 請求・支払い (billing)\n3. 商品に関する質問 (product)\n4. 一般的な問い合わせ (general)\n5. 緊急対応が必要 (urgent)\n\nレスポンスは以下のJSON形式で返してください：\n{\n  \"category\": \"カテゴリ名\",\n  \"priority\": \"high/medium/low\",\n  \"assignedTo\": \"担当者名\",\n  \"summary\": \"要約\",\n  \"recommendedAction\": \"推奨対応\"\n}\n\n担当者の割り当て規則：\n- technical: 田中エンジニア\n- billing: 佐藤経理\n- product: 山田営業\n- general: 鈴木サポート\n- urgent: マネージャー"
+        }
+      },
+      "name": "AI Content Analysis Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "id": "ai-content-analysis",
+      "notes": "OpenAI GPT-5-miniを使用してメール内容を分析・カテゴリ分け"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "name": "OpenAI GPT Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [680, 180],
+      "id": "openai-gpt-model",
+      "notes": "GPT-4o-miniモデル（GPT-5-miniの代替として使用）"
+    },
+    {
+      "parameters": {
+        "functionCode": "// AIエージェントからの結果を解析し、担当者情報を追加\nconst agentResult = $input.first().json;\nlet analysisResult;\n\ntry {\n  // AIの結果をパース\n  if (typeof agentResult.output === 'string') {\n    analysisResult = JSON.parse(agentResult.output);\n  } else {\n    analysisResult = agentResult.output;\n  }\n} catch (error) {\n  // パースに失敗した場合のフォールバック\n  analysisResult = {\n    category: 'general',\n    priority: 'medium',\n    assignedTo: '鈴木サポート',\n    summary: 'AIによる分析が不完全でした',\n    recommendedAction: '手動で確認してください'\n  };\n}\n\n// メール情報を取得\nconst emailData = $('Email Data Extraction').first().json;\n\n// Slack通知用のメッセージを構築\nconst slackMessage = `🔔 新しい顧客サポート案件\\n\\n` +\n  `📧 **送信者**: ${emailData.emailFrom}\\n` +\n  `📝 **件名**: ${emailData.emailSubject}\\n` +\n  `🏷️ **カテゴリ**: ${analysisResult.category}\\n` +\n  `⚡ **優先度**: ${analysisResult.priority}\\n` +\n  `👤 **担当者**: ${analysisResult.assignedTo}\\n` +\n  `📄 **要約**: ${analysisResult.summary}\\n` +\n  `💡 **推奨対応**: ${analysisResult.recommendedAction}\\n` +\n  `🕐 **受信時刻**: ${emailData.receivedAt}`;\n\n// データベース保存用のデータを構築\nconst dbData = {\n  email_from: emailData.emailFrom,\n  email_subject: emailData.emailSubject,\n  email_body: emailData.emailBody,\n  category: analysisResult.category,\n  priority: analysisResult.priority,\n  assigned_to: analysisResult.assignedTo,\n  summary: analysisResult.summary,\n  recommended_action: analysisResult.recommendedAction,\n  received_at: emailData.receivedAt,\n  processed_at: new Date().toISOString(),\n  status: 'pending'\n};\n\nreturn [{\n  json: {\n    slackMessage: slackMessage,\n    dbData: dbData,\n    analysisResult: analysisResult,\n    emailData: emailData\n  }\n}];"
+      },
+      "name": "Data Processing & Formatting",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "id": "data-processing",
+      "notes": "AI分析結果の処理とSlack・DB用データの整形"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list"
+        },
+        "text": "={{ $json.slackMessage }}",
+        "otherOptions": {}
+      },
+      "name": "Slack Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1120, 200],
+      "id": "slack-notification",
+      "notes": "担当者にSlackで通知を送信"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "customer_support_tickets",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email_from": "={{ $json.dbData.email_from }}",
+            "email_subject": "={{ $json.dbData.email_subject }}",
+            "email_body": "={{ $json.dbData.email_body }}",
+            "category": "={{ $json.dbData.category }}",
+            "priority": "={{ $json.dbData.priority }}",
+            "assigned_to": "={{ $json.dbData.assigned_to }}",
+            "summary": "={{ $json.dbData.summary }}",
+            "recommended_action": "={{ $json.dbData.recommended_action }}",
+            "received_at": "={{ $json.dbData.received_at }}",
+            "processed_at": "={{ $json.dbData.processed_at }}",
+            "status": "={{ $json.dbData.status }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Database Storage",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1120, 400],
+      "id": "database-storage",
+      "notes": "PostgreSQLデータベースに案件情報を保存"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success !== false }}",
+              "operation": "true"
+            }
+          ]
+        }
+      },
+      "name": "Success Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300],
+      "id": "success-check",
+      "notes": "処理成功の確認"
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ JSON.stringify({\n  status: 'success',\n  message: '顧客サポート案件を正常に処理しました',\n  ticketId: $json.dbData?.id || 'generated',\n  category: $json.analysisResult?.category || 'unknown',\n  assignedTo: $json.analysisResult?.assignedTo || 'unknown',\n  processedAt: new Date().toISOString()\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 220],
+      "id": "success-response",
+      "notes": "成功時のレスポンス返却"
+    },
+    {
+      "parameters": {
+        "responseCode": 500,
+        "responseData": "={{ JSON.stringify({\n  status: 'error',\n  message: '処理中にエラーが発生しました',\n  error: $json.error || 'Unknown error',\n  timestamp: new Date().toISOString()\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 380],
+      "id": "error-response",
+      "notes": "エラー時のレスポンス返却"
+    },
+    {
+      "parameters": {
+        "content": "## 顧客サポート自動化ワークフロー\\n\\n### 機能概要\\n- Webhookでメール受信\\n- AIエージェント（GPT-4o-mini）で内容分析\\n- カテゴリ別の担当者自動割り当て\\n- Slack通知送信\\n- PostgreSQLにデータ保存\\n\\n### カテゴリと担当者\\n- **技術的問題**: 田中エンジニア\\n- **請求・支払い**: 佐藤経理\\n- **商品に関する質問**: 山田営業\\n- **一般的な問い合わせ**: 鈴木サポート\\n- **緊急対応**: マネージャー\\n\\n### 設定が必要な認証情報\\n1. OpenAI API認証情報\\n2. Slack認証情報\\n3. PostgreSQL接続情報",
+        "height": 340,
+        "width": 420
+      },
+      "name": "Workflow Documentation",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [20, 0],
+      "id": "workflow-documentation",
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Email Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Email Data Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Data Extraction": {
+      "main": [
+        [
+          {
+            "node": "AI Content Analysis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Content Analysis Agent": {
+      "main": [
+        [
+          {
+            "node": "Data Processing & Formatting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Processing & Formatting": {
+      "main": [
+        [
+          {
+            "node": "Slack Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Database Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Notification": {
+      "main": [
+        [
+          {
+            "node": "Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Database Storage": {
+      "main": [
+        [
+          {
+            "node": "Success Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Check": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "versionId": "customer-support-automation-v1",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "meta": {
+    "instanceId": "customer-support-automation"
+  },
+  "tags": ["customer-support", "automation", "ai", "webhook"]
+}
