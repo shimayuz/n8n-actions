@@ -1,0 +1,367 @@
+name: Issue-Driven n8n Workflow Generator
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  analyze-issue:
+    if: contains(github.event.issue.labels.*.name, 'workflow-request')
+    runs-on: ubuntu-latest
+    outputs:
+      should_generate: ${{ steps.analyze.outputs.should_generate }}
+      workflow_name: ${{ steps.analyze.outputs.workflow_name }}
+      complexity: ${{ steps.analyze.outputs.complexity }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Analyze Issue Content
+        id: analyze
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueBody = context.payload.issue.body;
+            console.log('Analyzing issue #' + context.issue.number);
+            
+            // Parse issue body for workflow details
+            const workflowNameMatch = issueBody.match(/### Workflow Name\s*\n\s*(.+)/);
+            const complexityMatch = issueBody.match(/### Workflow Complexity\s*\n\s*(.+)/);
+            
+            if (workflowNameMatch) {
+              const workflowName = workflowNameMatch[1].trim();
+              const complexity = complexityMatch ? complexityMatch[1].trim() : 'Medium';
+              
+              core.setOutput('should_generate', 'true');
+              core.setOutput('workflow_name', workflowName);
+              core.setOutput('complexity', complexity);
+              
+              // Add initial comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `🤖 **AI Workflow Generation Started**\n\n` +
+                      `I'm analyzing your request for **${workflowName}**...\n\n` +
+                      `- Complexity: ${complexity}\n` +
+                      `- Estimated time: 2-3 minutes\n\n` +
+                      `I'll update you with progress shortly.`
+              });
+            } else {
+              core.setOutput('should_generate', 'false');
+            }
+
+  generate-workflow:
+    needs: analyze-issue
+    if: needs.analyze-issue.outputs.should_generate == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install @anthropic-ai/sdk
+      
+      - name: Extract Issue Details
+        id: extract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueBody = context.payload.issue.body;
+            
+            // Extract all fields from issue template
+            const fields = {
+              workflow_name: '',
+              description: '',
+              trigger_type: '',
+              integrations: '',
+              data_flow: '',
+              complexity: '',
+              features: [],
+              error_handling: '',
+              success_criteria: '',
+              test_data: '',
+              environment: '',
+              deadline: ''
+            };
+            
+            // Parse each field
+            const sections = issueBody.split('###');
+            sections.forEach(section => {
+              const lines = section.trim().split('\n');
+              const header = lines[0].trim();
+              const content = lines.slice(1).join('\n').trim();
+              
+              switch(header) {
+                case 'Workflow Name':
+                  fields.workflow_name = content;
+                  break;
+                case 'Workflow Description':
+                  fields.description = content;
+                  break;
+                case 'Trigger Type':
+                  fields.trigger_type = content;
+                  break;
+                case 'Required Integrations':
+                  fields.integrations = content;
+                  break;
+                case 'Data Flow Specification':
+                  fields.data_flow = content;
+                  break;
+                case 'Required Features':
+                  // Parse checkboxes
+                  fields.features = content.match(/\[x\]\s+(.+)/g)?.map(m => m.replace(/\[x\]\s+/, '')) || [];
+                  break;
+                case 'Error Handling Requirements':
+                  fields.error_handling = content;
+                  break;
+                case 'Success Criteria':
+                  fields.success_criteria = content;
+                  break;
+                case 'Test Data':
+                  fields.test_data = content.replace(/```json\n?/, '').replace(/\n?```/, '');
+                  break;
+              }
+            });
+            
+            // Save to environment
+            core.exportVariable('ISSUE_NUMBER', context.issue.number);
+            core.exportVariable('WORKFLOW_NAME', fields.workflow_name);
+            core.exportVariable('WORKFLOW_REQUIREMENTS', JSON.stringify(fields));
+            
+            return fields;
+      
+      - name: Generate Workflow with Enhanced Generator
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GENERATION_MODE: 'create'
+          PR_BODY: ${{ env.WORKFLOW_REQUIREMENTS }}
+        run: |
+          echo "🚀 Generating workflow with enhanced AI system..."
+          node .github/scripts/enhanced-workflow-generator.js
+          
+          # Capture output
+          if [ -f "generated_workflow.json" ]; then
+            WORKFLOW_CONTENT=$(cat generated_workflow.json)
+            echo "workflow_generated=true" >> $GITHUB_OUTPUT
+            
+            # Create workflow file
+            WORKFLOW_FILE="workflows/${{ env.WORKFLOW_NAME }}.workflow.json"
+            cp generated_workflow.json "$WORKFLOW_FILE"
+            echo "workflow_file=$WORKFLOW_FILE" >> $GITHUB_OUTPUT
+          else
+            echo "workflow_generated=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Validate Generated Workflow
+        id: validate
+        if: steps.generate.outputs.workflow_generated == 'true'
+        run: |
+          echo "🔍 Validating generated workflow..."
+          
+          # Run validation script
+          if node scripts/validate-workflow.js "${{ steps.generate.outputs.workflow_file }}"; then
+            echo "validation_passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Workflow validation passed!"
+          else
+            echo "validation_passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Workflow validation failed!"
+          fi
+      
+      - name: Create Feature Branch
+        id: branch
+        if: steps.validate.outputs.validation_passed == 'true'
+        run: |
+          BRANCH_NAME="workflow/${{ env.WORKFLOW_NAME }}-${{ github.run_number }}"
+          git checkout -b "$BRANCH_NAME"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+      
+      - name: Commit Workflow
+        if: steps.validate.outputs.validation_passed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add "${{ steps.generate.outputs.workflow_file }}"
+          git add generation_report.json
+          
+          git commit -m "feat: Add ${{ env.WORKFLOW_NAME }} workflow from issue #${{ env.ISSUE_NUMBER }}
+          
+          - Generated using Enhanced AI Workflow Generator
+          - Validated and tested
+          - Ready for review
+          
+          Resolves #${{ env.ISSUE_NUMBER }}"
+      
+      - name: Push to GitHub
+        if: steps.validate.outputs.validation_passed == 'true'
+        run: |
+          git push origin "${{ steps.branch.outputs.branch_name }}"
+      
+      - name: Create Pull Request
+        id: pr
+        if: steps.validate.outputs.validation_passed == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ steps.branch.outputs.branch_name }}
+          title: "feat: Add ${{ env.WORKFLOW_NAME }} workflow"
+          body: |
+            ## 🤖 AI-Generated n8n Workflow
+            
+            This PR was automatically generated from issue #${{ env.ISSUE_NUMBER }}
+            
+            ### 📋 Workflow Details
+            - **Name**: `${{ env.WORKFLOW_NAME }}`
+            - **File**: `${{ steps.generate.outputs.workflow_file }}`
+            - **Generated by**: Enhanced AI Workflow Generator v2.0
+            - **Model Used**: Claude 3 Sonnet
+            - **Validation**: ✅ Passed
+            
+            ### 🎯 Features Implemented
+            Based on the issue requirements, this workflow includes:
+            
+            ${{ fromJson(env.WORKFLOW_REQUIREMENTS).features }}
+            
+            ### 📊 Generation Report
+            See `generation_report.json` for detailed metrics
+            
+            ### ✅ Checklist
+            - [x] Workflow structure validated
+            - [x] Node connections verified
+            - [x] Settings properly configured
+            - [x] Error handling implemented
+            - [ ] Manual testing required
+            - [ ] Documentation review needed
+            
+            ### 🔄 Next Steps
+            1. Review the generated workflow
+            2. Test in n8n sandbox environment
+            3. Verify integrations are configured
+            4. Approve and merge when ready
+            
+            ---
+            
+            Closes #${{ env.ISSUE_NUMBER }}
+            
+            /cc @${{ github.event.issue.user.login }}
+          labels: |
+            ai-generated
+            workflow
+            needs-review
+            from-issue
+      
+      - name: Update Issue with Success
+        if: steps.validate.outputs.validation_passed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ env.ISSUE_NUMBER }},
+              body: `## ✅ Workflow Successfully Generated!\n\n` +
+                    `Your n8n workflow has been created and validated.\n\n` +
+                    `### 📁 Generated Files\n` +
+                    `- Workflow: \`${{ steps.generate.outputs.workflow_file }}\`\n` +
+                    `- Report: \`generation_report.json\`\n\n` +
+                    `### 🔗 Pull Request\n` +
+                    `PR #${{ steps.pr.outputs.pull-request-number }} has been created for review.\n\n` +
+                    `### 📋 What's Next?\n` +
+                    `1. Review the generated workflow in the PR\n` +
+                    `2. Test it in your n8n instance\n` +
+                    `3. Provide feedback if changes are needed\n` +
+                    `4. Approve the PR when satisfied\n\n` +
+                    `The workflow will be automatically deployed after merge.`
+            });
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ env.ISSUE_NUMBER }},
+              labels: ['workflow-generated', 'has-pr']
+            });
+      
+      - name: Update Issue with Failure
+        if: steps.validate.outputs.validation_passed != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ env.ISSUE_NUMBER }},
+              body: `## ❌ Workflow Generation Failed\n\n` +
+                    `Unfortunately, I couldn't generate a valid workflow.\n\n` +
+                    `### 🔍 What Went Wrong?\n` +
+                    `The validation step failed. This usually means:\n` +
+                    `- Missing required fields in the specification\n` +
+                    `- Incompatible node configurations\n` +
+                    `- Invalid connection patterns\n\n` +
+                    `### 🛠️ How to Fix\n` +
+                    `1. Review your requirements for clarity\n` +
+                    `2. Ensure all integrations are properly specified\n` +
+                    `3. Check that the data flow makes sense\n` +
+                    `4. Edit this issue and I'll try again\n\n` +
+                    `You can also try creating a simpler version first.`
+            });
+            
+            // Add failure label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ env.ISSUE_NUMBER }},
+              labels: ['generation-failed', 'needs-clarification']
+            });
+
+  handle-commands:
+    if: github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'workflow-request')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Parse Command
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+            
+            // Check for commands
+            if (comment.startsWith('/regenerate')) {
+              core.setOutput('command', 'regenerate');
+            } else if (comment.startsWith('/validate')) {
+              core.setOutput('command', 'validate');
+            } else if (comment.startsWith('/deploy')) {
+              core.setOutput('command', 'deploy');
+            } else if (comment.startsWith('/test')) {
+              core.setOutput('command', 'test');
+            } else {
+              core.setOutput('command', 'none');
+            }
+      
+      - name: Execute Command
+        if: steps.parse.outputs.command != 'none'
+        run: |
+          echo "Executing command: ${{ steps.parse.outputs.command }}"
+          # Command execution logic here

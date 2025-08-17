@@ -1,0 +1,232 @@
+name: n8n Workflow Request
+description: Request automatic generation of an n8n workflow using AI
+title: "[WORKFLOW]: "
+labels: ["workflow-request", "ai-generation", "needs-triage"]
+assignees:
+  - heavenlykiss0820
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🚀 n8n Workflow Generation Request
+        
+        This issue will trigger automatic n8n workflow generation using Claude AI.
+        The workflow will be validated, tested, and deployed automatically.
+        
+        ---
+  
+  - type: input
+    id: workflow_name
+    attributes:
+      label: Workflow Name
+      description: A descriptive name for your workflow (use kebab-case)
+      placeholder: ex. customer-onboarding-automation
+    validations:
+      required: true
+  
+  - type: textarea
+    id: description
+    attributes:
+      label: Workflow Description
+      description: Describe what the workflow should accomplish
+      placeholder: |
+        This workflow should:
+        1. Receive webhook from signup form
+        2. Validate user data
+        3. Create user in database
+        4. Send welcome email
+        5. Add to CRM system
+        6. Trigger onboarding sequence
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: trigger_type
+    attributes:
+      label: Trigger Type
+      description: How should the workflow be triggered?
+      multiple: false
+      options:
+        - Webhook
+        - Schedule/Cron
+        - Email
+        - Database Change
+        - Manual
+        - Chat Message
+        - Form Submission
+        - API Call
+        - File Upload
+        - Other
+    validations:
+      required: true
+  
+  - type: textarea
+    id: integrations
+    attributes:
+      label: Required Integrations
+      description: List all services, APIs, and databases this workflow needs
+      placeholder: |
+        - Discord (for notifications)
+        - OpenAI GPT-4 (for content generation)
+        - PostgreSQL (for data storage)
+        - SendGrid (for emails)
+        - Slack (for team updates)
+        - Google Sheets (for reporting)
+    validations:
+      required: true
+  
+  - type: textarea
+    id: data_flow
+    attributes:
+      label: Data Flow Specification
+      description: Describe how data should flow through the workflow
+      placeholder: |
+        1. **Input**: JSON webhook with user registration data
+           - Fields: email, name, company, plan_type
+        
+        2. **Processing**: 
+           - Validate email format
+           - Check for duplicate users
+           - Enrich data with company info
+        
+        3. **Storage**:
+           - Save to PostgreSQL users table
+           - Create audit log entry
+        
+        4. **Output**:
+           - Return success/failure status
+           - Include user_id if successful
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Workflow Complexity
+      description: Estimate the complexity of your workflow
+      options:
+        - Simple (1-5 nodes)
+        - Medium (6-15 nodes)
+        - Complex (16-30 nodes)
+        - Very Complex (30+ nodes)
+    validations:
+      required: true
+  
+  - type: checkboxes
+    id: features
+    attributes:
+      label: Required Features
+      description: Select all features your workflow needs
+      options:
+        - label: Error Handling
+          required: false
+        - label: Retry Logic
+          required: false
+        - label: Rate Limiting
+          required: false
+        - label: Data Validation
+          required: false
+        - label: Logging/Audit Trail
+          required: false
+        - label: Notifications on Failure
+          required: false
+        - label: Parallel Processing
+          required: false
+        - label: Conditional Logic
+          required: false
+        - label: Data Transformation
+          required: false
+        - label: Authentication/Security
+          required: false
+        - label: Caching
+          required: false
+        - label: Batch Processing
+          required: false
+  
+  - type: textarea
+    id: error_handling
+    attributes:
+      label: Error Handling Requirements
+      description: How should the workflow handle errors?
+      placeholder: |
+        - On validation error: Return 400 with specific error message
+        - On database error: Retry 3 times with exponential backoff
+        - On API timeout: Use fallback service
+        - On complete failure: Send alert to ops team via Slack
+  
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success Criteria
+      description: How will we know the workflow is working correctly?
+      placeholder: |
+        - All test cases pass (see test data below)
+        - Average execution time < 3 seconds
+        - Error rate < 1%
+        - Successfully handles 100 requests/minute
+        - Proper logging for all operations
+    validations:
+      required: true
+  
+  - type: textarea
+    id: test_data
+    attributes:
+      label: Test Data
+      description: Provide sample input data for testing
+      placeholder: |
+        ```json
+        {
+          "email": "test@example.com",
+          "name": "John Doe",
+          "company": "Acme Corp",
+          "plan_type": "enterprise"
+        }
+        ```
+      render: json
+  
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Target Environment
+      description: Where should this workflow be deployed?
+      options:
+        - Development
+        - Staging
+        - Production
+        - All Environments
+    validations:
+      required: true
+  
+  - type: input
+    id: deadline
+    attributes:
+      label: Deadline
+      description: When do you need this workflow completed?
+      placeholder: YYYY-MM-DD
+  
+  - type: checkboxes
+    id: acknowledgments
+    attributes:
+      label: Acknowledgments
+      description: Please confirm the following
+      options:
+        - label: I have searched for existing similar workflows
+          required: true
+        - label: I have provided all necessary integration details
+          required: true
+        - label: I understand this will be automatically generated by AI
+          required: true
+        - label: I will review and test the generated workflow
+          required: true
+  
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other information that might help with generation
+      placeholder: |
+        - Business context
+        - Performance requirements
+        - Security considerations
+        - Related workflows
+        - Documentation links

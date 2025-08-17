@@ -2,6 +2,8 @@
 *.backup
 credentials.json
 .env
+.env.local
+.env.*.local
 
 # OS
 .DS_Store
@@ -16,6 +18,47 @@ Thumbs.db
 # Logs
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.test.json
+
+# Production
+build/
+dist/
+
+# Misc
+*.local
+.cache/
+
+# Local settings and state
+.claude/settings.local.json
+.workflow-sync-state.json
+mcp.json
+.serena/
+outputs_backup*/
+
+# Temporary files
+*.tmp
+*.temp
+.workflow.json
+claude_backup.md
+
+# Private/Personal
+*_private.json
+*_secret.json
+*.key
+*.pem
+
+# Backups
+*.backup
+*_backup/
+backup_*/
