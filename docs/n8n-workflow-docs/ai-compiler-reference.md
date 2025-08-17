@@ -109,21 +109,21 @@ ${validationErrors}
 ```javascript
 const MODEL_CONFIG = {
   // For complex workflows
-  'claude-3-opus-20240229': {
+  'claude-4-opus-20240229': {
     maxTokens: 8192,
     temperature: 0.3,
     use_case: 'Complex multi-node workflows'
   },
   
   // For standard workflows (recommended)
-  'claude-3-sonnet-20241022': {
+  'claude-4-sonnet-20241022': {
     maxTokens: 8192,
     temperature: 0.2,
     use_case: 'Standard workflows, best balance'
   },
   
   // For simple workflows
-  'claude-3-haiku-20240307': {
+  'claude-4-haiku-20240307': {
     maxTokens: 4096,
     temperature: 0.1,
     use_case: 'Simple, fast generation'
@@ -395,7 +395,7 @@ async function testWorkflow(workflow, testCases) {
 ```bash
 # AI Configuration
 ANTHROPIC_API_KEY=sk-ant-xxx
-CLAUDE_MODEL=claude-3-sonnet-20241022
+CLAUDE_MODEL=claude-4-sonnet-20241022
 MAX_RETRIES=3
 RETRY_DELAY=1000
 

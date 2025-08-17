@@ -1,42 +1,104 @@
 # 🚀 n8n AI ワークフロー自動生成システム
 
-## 概要
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Powered by Claude](https://img.shields.io/badge/AI-Claude%203-orange)](https://www.anthropic.com)
+[![n8n Compatible](https://img.shields.io/badge/n8n-compatible-green)](https://n8n.io)
 
-このシステムは、GitHub IssueやPull Requestから**自然言語の要件**を受け取り、Claude AIを使って**自動的にn8nワークフローを生成**する完全自動化システムです。
+🤖 **自然言語からn8nワークフローを自動生成** - やりたいことを説明するだけで、本番環境で使えるワークフローが完成！
 
-### ✨ 主な特徴
+## 🚀 クイックスタート（5分で完了）
+
+### ステップ1: このリポジトリをFork
+右上の **Fork** ボタンをクリック → あなたのGitHubアカウントにコピー
+
+### ステップ2: APIキーを設定
+**あなたのForkしたリポジトリで**：
+1. `Settings` → `Secrets and variables` → `Actions` へ移動
+2. `New repository secret` をクリック
+3. 追加: `ANTHROPIC_API_KEY` = あなたのClaude APIキー（[ここから取得](https://console.anthropic.com/)）
+
+### ステップ3: 最初のワークフローを作成！
+1. `Issues` → `New issue` へ移動
+2. **「n8n Workflow Request」** テンプレートを選択
+3. 日本語で要件を記述
+4. 送信して約2分待つだけ ✨
+
+## ✨ 主な特徴
 
 - 📝 **自然言語対応**: 日本語・英語で要件を記述するだけ
 - 🤖 **AI自動生成**: Claude 3が最適なワークフローを生成
 - 🔧 **自己修復機能**: エラーを自動検出・修正
 - ✅ **品質保証**: 自動検証とテスト
 - 🚀 **高速開発**: 数時間の作業を**2分**に短縮
+- 🌍 **オープンソース**: MIT ライセンス、永久無料
 
-## 📋 目次
+## 🎯 何が作れるの？
 
-1. [セットアップ手順](#セットアップ手順)
-2. [使い方](#使い方)
-3. [ワークフロー生成方法](#ワークフロー生成方法)
-4. [コマンド一覧](#コマンド一覧)
-5. [トラブルシューティング](#トラブルシューティング)
-6. [高度な設定](#高度な設定)
+- 📬 **Webhook & API**: REST エンドポイント、データ処理
+- 🤖 **AI チャットボット**: Discord、Slack、Telegram ボット（GPT/Claude対応）
+- 📊 **データパイプライン**: ETL、データベース同期、レポート生成
+- 🔄 **自動化**: スケジュールタスク、メール処理、通知
+- 🔗 **統合**: 400以上のサービスを連携
 
-## セットアップ手順
+## 🛠️ 動作の仕組み
 
-### 前提条件
+```mermaid
+graph LR
+    A[Issue作成] --> B[AI分析]
+    B --> C[ワークフロー生成]
+    C --> D[検証・修正]
+    D --> E[PR作成]
+    E --> F[デプロイ準備完了!]
+```
 
-- GitHubアカウント
-- n8nインスタンス（クラウドまたはセルフホスト）
-- Node.js 20以上
-- npm または yarn
+1. **要件を記述** - Issueに日本語で説明
+2. **AIが生成** - 完全なn8nワークフロー
+3. **自動検証** - エラーを修正
+4. **PR作成** - すぐ使えるワークフロー
+5. **デプロイ** - n8nインスタンスへ
 
-### 1. リポジトリのフォーク・クローン
+## 📋 リクエスト例
+
+```markdown
+以下のワークフローを作成してください：
+1. Slackチャンネルを監視
+2. 質問をgpt-5-miniで処理
+3. 回答をSlackに投稿
+4. ログをデータベースに保存
+```
+
+**結果**: 2分で完全なワークフローが完成！ 🎉
+
+## 📚 詳細ドキュメント
+
+- 🎯 [クイックスタートガイド](docs/QUICKSTART-jp.md)
+- 💡 [実例集](docs/EXAMPLES-jp.md)
+- ❓ [よくある質問](docs/FAQ-jp.md)
+- 📖 [完全ガイド](docs/)
+
+## 🔧 上級者向け
+
+### Forkしてからのカスタマイズ
+
+Forkした後、以下のカスタマイズが可能：
+- `.github/scripts/` でAIプロンプトを調整
+- `workflow-spec.md` に独自ノードタイプを追加
+- `scripts/validate-workflow.js` で検証ルールを変更
+- カスタムIssueテンプレートを作成
+
+### ローカル開発
 
 ```bash
-# リポジトリをフォーク（GitHubのUIから）
-# その後、ローカルにクローン
-git clone https://github.com/あなたのユーザー名/n8n_CICD.git
-cd n8n_CICD
+# あなたのForkをクローン
+git clone https://github.com/あなたのユーザー名/n8n-actions.git
+cd n8n-actions
+
+# 依存関係をインストール
+npm install
+
+# ローカルでワークフロー生成をテスト
+export ANTHROPIC_API_KEY="your-key"
+node .github/scripts/enhanced-workflow-generator.js
 ```
 
 ### 2. 依存関係のインストール
@@ -316,13 +378,13 @@ node .github/scripts/enhanced-workflow-generator.js
 // config/models.js
 module.exports = {
   // 複雑なワークフロー（30ノード以上）
-  complex: 'claude-3-opus-20240229',
+  complex: 'claude-4-opus-20240229',
   
   // 標準的なワークフロー（推奨）
-  standard: 'claude-3-sonnet-20241022',
+  standard: 'claude-4-sonnet-20241022',
   
   // シンプルなワークフロー
-  simple: 'claude-3-haiku-20240307'
+  simple: 'claude-4-haiku-20240307'
 };
 ```
 
@@ -455,6 +517,6 @@ MIT License - 自由に使用・改変可能です。
 
 **開発者**: [@heavenlykiss0820](https://github.com/heavenlykiss0820)
 
-**最終更新**: 2025年1月
+**最終更新**: 2025年8月
 
 🌟 このプロジェクトが役立ったら、スターをお願いします！

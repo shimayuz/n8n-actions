@@ -153,7 +153,7 @@ function getSpecificInstructions(errorType) {
 function callClaudeAPI(userPrompt) {
   return new Promise((resolve, reject) => {
     const requestBody = JSON.stringify({
-      model: 'claude-3-sonnet-20241022',
+      model: 'claude-4-sonnet-20241022',
       max_tokens: 8192,
       temperature: 0.1, // より確定的な出力のため低めに設定
       system: SYSTEM_PROMPT,

@@ -263,7 +263,7 @@ inputs:
     required: true
   model:
     description: 'Claude model to use'
-    default: 'claude-3-sonnet-20241022'
+    default: 'claude-4-sonnet-20241022'
   max_retries:
     description: 'Maximum retry attempts'
     default: '3'

@@ -151,7 +151,7 @@ ${FILE_CONTENT}
 function callClaudeAPI(userPrompt) {
   return new Promise((resolve, reject) => {
     const requestBody = JSON.stringify({
-      model: 'claude-3-sonnet-20241022',
+      model: 'claude-4-sonnet-20241022',
       max_tokens: 8192,
       temperature: 0.2,
       system: SYSTEM_PROMPT,

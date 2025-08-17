@@ -135,7 +135,7 @@ N8N_WEBHOOK_URL: n8n webhook endpoint
 
 ```bash
 # .env file
-CLAUDE_MODEL=claude-3-sonnet-20241022
+CLAUDE_MODEL=claude-4-sonnet-20241022
 MAX_RETRIES=3
 AUTO_DEPLOY=true
 VALIDATION_STRICT=true

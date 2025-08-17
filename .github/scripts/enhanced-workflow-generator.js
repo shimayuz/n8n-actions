@@ -20,9 +20,9 @@ const CONFIG = {
     version: '2023-06-01'
   },
   models: {
-    complex: 'claude-3-opus-20240229',
-    standard: 'claude-3-sonnet-20241022',
-    simple: 'claude-3-haiku-20240307'
+    complex: 'claude-4-opus-20240229',
+    standard: 'claude-4-sonnet-20241022',
+    simple: 'claude-4-haiku-20240307'
   },
   generation: {
     maxTokens: 8192,
