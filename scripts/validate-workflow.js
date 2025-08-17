@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Validate n8n workflow JSON files
+ * Validate n8n workflow JSON files with whitelist checking
  * Usage: node validate-workflow.js <workflow-file.json>
  */
 
@@ -16,6 +16,40 @@ const colors = {
   blue: '\x1b[34m',
   reset: '\x1b[0m'
 };
+
+// Whitelist of allowed n8n nodes (実在するノードのみ)
+const ALLOWED_NODES = new Set([
+  // Trigger nodes
+  'n8n-nodes-base.webhook',
+  'n8n-nodes-base.scheduleTrigger',
+  'n8n-nodes-base.manualTrigger',
+  'n8n-nodes-base.emailReadImapV2',
+  
+  // Core nodes
+  'n8n-nodes-base.set',
+  'n8n-nodes-base.code',
+  'n8n-nodes-base.httpRequest',
+  'n8n-nodes-base.if',
+  'n8n-nodes-base.switch',
+  'n8n-nodes-base.merge',
+  'n8n-nodes-base.splitInBatches',
+  'n8n-nodes-base.noOp',
+  'n8n-nodes-base.wait',
+  
+  // AI/LLM nodes
+  '@n8n/n8n-nodes-langchain.agent',
+  '@n8n/n8n-nodes-langchain.lmChatOpenAi',
+  '@n8n/n8n-nodes-langchain.toolCode',
+  '@n8n/n8n-nodes-langchain.memoryBufferWindow',
+  
+  // Integration nodes
+  'n8n-nodes-base.slack',
+  'n8n-nodes-base.discord',
+  'n8n-nodes-base.postgres',
+  'n8n-nodes-base.googleSheets',
+  'n8n-nodes-base.gmail',
+  'n8n-nodes-base.sendEmail'
+]);
 
 function validateWorkflow(filePath) {
   console.log(`${colors.blue}Validating: ${filePath}${colors.reset}\n`);
@@ -65,20 +99,67 @@ function validateWorkflow(filePath) {
 
   // Validate nodes
   if (workflow.nodes && Array.isArray(workflow.nodes)) {
+    const nodeNames = new Set();
+    
     workflow.nodes.forEach((node, index) => {
       if (!node.id) {
         errors.push(`Node at index ${index} missing required field: id`);
       }
       if (!node.name) {
         errors.push(`Node at index ${index} missing required field: name`);
+      } else {
+        // Check for duplicate node names
+        if (nodeNames.has(node.name)) {
+          errors.push(`Duplicate node name: ${node.name}`);
+        }
+        nodeNames.add(node.name);
       }
       if (!node.type) {
         errors.push(`Node at index ${index} missing required field: type`);
+      } else {
+        // Whitelist validation - check if node type exists in n8n
+        if (!ALLOWED_NODES.has(node.type)) {
+          errors.push(`Invalid node type: "${node.type}" (node: ${node.name || index}). This node type does not exist in n8n.`);
+        }
       }
       if (!node.position || !Array.isArray(node.position) || node.position.length !== 2) {
         errors.push(`Node "${node.name || index}" has invalid position`);
       }
     });
+    
+    // Validate connections reference existing nodes
+    if (workflow.connections) {
+      Object.keys(workflow.connections).forEach(sourceName => {
+        if (!nodeNames.has(sourceName)) {
+          errors.push(`Connection references non-existent source node: ${sourceName}`);
+        }
+        
+        const connections = workflow.connections[sourceName];
+        if (connections.main) {
+          connections.main.forEach((outputConnections, outputIndex) => {
+            if (Array.isArray(outputConnections)) {
+              outputConnections.forEach(conn => {
+                if (conn.node && !nodeNames.has(conn.node)) {
+                  errors.push(`Connection from ${sourceName} references non-existent target node: ${conn.node}`);
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+  }
+  
+  // Validate settings
+  if (workflow.settings) {
+    if (typeof workflow.settings.saveDataSuccessExecution !== 'undefined' && 
+        typeof workflow.settings.saveDataSuccessExecution !== 'string') {
+      errors.push(`settings.saveDataSuccessExecution must be a string ("all" or "none"), not ${typeof workflow.settings.saveDataSuccessExecution}`);
+    }
+    if (typeof workflow.settings.saveDataErrorExecution !== 'undefined' && 
+        typeof workflow.settings.saveDataErrorExecution !== 'string') {
+      errors.push(`settings.saveDataErrorExecution must be a string ("all" or "none"), not ${typeof workflow.settings.saveDataErrorExecution}`);
+    }
   }
 
   // Check for credentials

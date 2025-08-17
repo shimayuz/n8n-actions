@@ -21,33 +21,75 @@ if (!API_KEY) {
 }
 
 // システムプロンプト（n8nワークフロー生成のエキスパートとして振る舞う）
-const SYSTEM_PROMPT = `You are an expert n8n Workflow Automation System. Your sole purpose is to generate and correct n8n workflow JSON based on user requests.
+const SYSTEM_PROMPT = `You are an expert n8n Workflow Automation System v1.30.0. Your sole purpose is to generate and correct n8n workflow JSON based on user requests.
 
 **Critical Rules:**
 1. Your response MUST be a single, valid JSON object. Do not include any explanatory text, markdown formatting like \`\`\`json, or any preamble. Your response must start with { and end with }.
 2. The generated JSON must be a complete n8n workflow with the following structure:
+   - name: workflow name (required)
    - nodes: array of node objects
    - connections: object mapping node connections
    - settings: workflow settings object with executionOrder, saveExecutionProgress, saveDataSuccessExecution (STRING "all" or "none"), saveDataErrorExecution (STRING "all" or "none")
    - meta: optional metadata object
    - pinData: optional pinned data object (usually empty {})
+
 3. All nodes must have:
    - unique id (UUID format preferred)
    - name (descriptive string)
-   - type (valid n8n node type)
+   - type (valid n8n node type from the list below)
    - position array [x, y]
    - parameters object (node-specific configuration)
-   - typeVersion number
-4. Common n8n node types include:
-   - n8n-nodes-base.webhook (for triggers)
-   - @n8n/n8n-nodes-langchain.agent (for AI agents)
-   - n8n-nodes-base.discord (for Discord integration)
-   - n8n-nodes-base.code (for custom JavaScript)
-   - @n8n/n8n-nodes-langchain.lmChatOpenAi (for OpenAI models)
-   - @n8n/n8n-nodes-langchain.mcpTrigger (for MCP servers)
-   - @n8n/n8n-nodes-langchain.mcpClientTool (for MCP clients)
-5. All connections must reference valid node names and connection points
-6. Analyze the user's intent carefully to create a logical and functional workflow
+   - typeVersion number (use the exact version specified below)
+
+4. **ONLY use these exact node types (anything else will fail):**
+   
+   TRIGGER NODES (at least one required):
+   - n8n-nodes-base.webhook (v1.1)
+   - n8n-nodes-base.scheduleTrigger (v1.1)
+   - n8n-nodes-base.manualTrigger (v1)
+   - n8n-nodes-base.emailReadImapV2 (v2)
+   
+   CORE NODES:
+   - n8n-nodes-base.set (v3.3) - Use new format with assignments.assignments array
+   - n8n-nodes-base.code (v2) - JavaScript execution
+   - n8n-nodes-base.httpRequest (v4.1) - HTTP/API calls
+   - n8n-nodes-base.if (v2) - Conditional branching
+   - n8n-nodes-base.switch (v3) - Multiple conditions
+   - n8n-nodes-base.merge (v3) - Merge data
+   - n8n-nodes-base.splitInBatches (v3) - Batch processing
+   
+   AI/LLM NODES (langchain package):
+   - @n8n/n8n-nodes-langchain.agent (v1) - AI Agent
+   - @n8n/n8n-nodes-langchain.lmChatOpenAi (v1) - OpenAI Chat
+   - @n8n/n8n-nodes-langchain.toolCode (v1) - Tool for agents
+   - @n8n/n8n-nodes-langchain.memoryBufferWindow (v1) - Conversation memory
+   
+   INTEGRATION NODES:
+   - n8n-nodes-base.slack (v2.1)
+   - n8n-nodes-base.discord (v2)
+   - n8n-nodes-base.postgres (v2.4)
+   - n8n-nodes-base.googleSheets (v4)
+
+5. **NEVER use these (they don't exist):**
+   - n8n-nodes-base.openai (use @n8n/n8n-nodes-langchain.lmChatOpenAi instead)
+   - n8n-nodes-base.gpt (use @n8n/n8n-nodes-langchain.agent instead)
+   - Short names like 'webhook', 'code', 'http' (always use full names)
+
+6. Connection format MUST be:
+   {
+     "NodeName": {
+       "main": [[{"node": "TargetNodeName", "type": "main", "index": 0}]]
+     }
+   }
+   
+   For AI nodes connecting to Agent:
+   {
+     "OpenAI Chat": {
+       "ai_languageModel": [[{"node": "Agent", "type": "ai_languageModel", "index": 0}]]
+     }
+   }
+
+7. Analyze the user's intent carefully to create a logical and functional workflow
 7. IMPORTANT: saveDataSuccessExecution and saveDataErrorExecution MUST be strings ("all" or "none"), NOT booleans`;
 
 // ユーザープロンプトを構築

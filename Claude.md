@@ -19,6 +19,73 @@ Example:
 }
 ```
 
+## n8n公式ノード正確なリスト（実在確認済み）
+
+### 必ず使用すべき正確なノード名
+
+#### トリガーノード（起動ノード）
+- `n8n-nodes-base.webhook` - Webhookトリガー（v1.1）
+- `n8n-nodes-base.scheduleTrigger` - スケジュール実行（v1.1） 
+- `n8n-nodes-base.manualTrigger` - 手動実行（v1）
+- `n8n-nodes-base.emailReadImapV2` - メール受信（v2）
+
+#### コアノード（基本処理）
+- `n8n-nodes-base.set` - データ設定（v3.3）
+- `n8n-nodes-base.code` - JavaScriptコード（v2）
+- `n8n-nodes-base.httpRequest` - HTTPリクエスト（v4.1）
+- `n8n-nodes-base.if` - 条件分岐（v2）
+- `n8n-nodes-base.switch` - 複数条件分岐（v3）
+- `n8n-nodes-base.merge` - データ結合（v3）
+- `n8n-nodes-base.splitInBatches` - バッチ処理（v3）
+
+#### AI/LLMノード（最新版）
+- `@n8n/n8n-nodes-langchain.agent` - AIエージェント（v1）
+- `@n8n/n8n-nodes-langchain.lmChatOpenAi` - OpenAI Chat（v1）
+- `@n8n/n8n-nodes-langchain.toolCode` - AIツール用コード（v1）
+- `@n8n/n8n-nodes-langchain.memoryBufferWindow` - 会話メモリ（v1）
+
+#### 統合ノード（外部サービス）
+- `n8n-nodes-base.slack` - Slack（v2.1）
+- `n8n-nodes-base.discord` - Discord（v2）
+- `n8n-nodes-base.postgres` - PostgreSQL（v2.4）
+- `n8n-nodes-base.googleSheets` - Google Sheets（v4）
+
+### よくある間違いと正解
+
+❌ **間違い**: `n8n-nodes-base.openai`
+✅ **正解**: `@n8n/n8n-nodes-langchain.lmChatOpenAi`
+
+❌ **間違い**: `n8n-nodes-base.gpt`
+✅ **正解**: `@n8n/n8n-nodes-langchain.agent` + `@n8n/n8n-nodes-langchain.lmChatOpenAi`
+
+❌ **間違い**: `webhook` (短縮名)
+✅ **正解**: `n8n-nodes-base.webhook` (フルネーム必須)
+
+### 接続パターン（必須遵守）
+
+#### 正しい接続形式
+```json
+"connections": {
+  "Webhook": {
+    "main": [
+      [
+        {
+          "node": "Set",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    ]
+  }
+}
+```
+
+#### AIエージェントの正しい構成
+1. Agent ノード
+2. LM Chat OpenAI ノード（Agentに接続）
+3. Tool ノード（必要に応じてAgentに接続）
+4. Memory ノード（オプション、Agentに接続）
+
 ## Project Context
 
 ### Project Steering
