@@ -1,0 +1,256 @@
+{
+  "name": "n8n Test Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "test-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "name": "Chat Message Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-chat-trigger",
+      "notes": "チャットメッセージのWebhook受信ポイント"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "response_type",
+              "value": "test_response"
+            },
+            {
+              "name": "message",
+              "value": "テストワークフローが正常に動作しています！"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}"
+            },
+            {
+              "name": "received_data",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ],
+          "boolean": [
+            {
+              "name": "success",
+              "value": true
+            }
+          ]
+        }
+      },
+      "name": "Prepare Test Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "id": "prepare-response",
+      "notes": "テストレスポンスデータを準備"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.message || '' }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Check Message Content",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "id": "message-check",
+      "notes": "メッセージ内容の存在チェック"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "response",
+              "value": "メッセージを受信しました: {{ $('Chat Message Webhook').item.json.body.message || 'メッセージなし' }}"
+            },
+            {
+              "name": "processing_time",
+              "value": "{{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "name": "Success Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 200],
+      "id": "success-response",
+      "notes": "成功時のレスポンス生成"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "warning"
+            },
+            {
+              "name": "response",
+              "value": "メッセージが空です。テストデータを送信してください。"
+            },
+            {
+              "name": "processing_time",
+              "value": "{{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "name": "Empty Message Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 400],
+      "id": "empty-response",
+      "notes": "メッセージが空の場合のレスポンス"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition"
+      },
+      "name": "Merge Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1050, 300],
+      "id": "merge-responses",
+      "notes": "すべてのレスポンスをマージ"
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300],
+      "id": "send-response",
+      "notes": "最終レスポンスを送信"
+    }
+  ],
+  "connections": {
+    "Chat Message Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Test Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Test Response": {
+      "main": [
+        [
+          {
+            "node": "Check Message Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Message Content": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Empty Message Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Empty Message Response": {
+      "main": [
+        [
+          {
+            "node": "Merge Responses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Responses": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "versionId": "v1-n8n-test-workflow",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "tags": ["test", "chat", "simple"],
+  "meta": {
+    "description": "シンプルなn8nテストワークフロー - チャットメッセージのトリガーでテストレスポンスを返す",
+    "created": "2025-08-17",
+    "purpose": "開発環境でのn8n動作テスト用"
+  }
+}
