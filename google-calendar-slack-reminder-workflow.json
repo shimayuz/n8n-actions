@@ -1,0 +1,487 @@
+{
+  "name": "Google Calendar Event Creator with Slack Reminder",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "calendar-event-creator",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-trigger-id",
+      "notes": "Webhook endpoint to receive calendar event creation requests"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Data validation for incoming webhook data\nconst data = $json;\n\n// Required fields validation\nconst requiredFields = ['title', 'startDateTime'];\nconst missingFields = [];\n\nfor (const field of requiredFields) {\n  if (!data[field]) {\n    missingFields.push(field);\n  }\n}\n\nif (missingFields.length > 0) {\n  return [{\n    json: {\n      error: true,\n      message: `Missing required fields: ${missingFields.join(', ')}`,\n      statusCode: 400\n    }\n  }];\n}\n\n// Validate date format\nif (!Date.parse(data.startDateTime)) {\n  return [{\n    json: {\n      error: true,\n      message: 'Invalid startDateTime format. Use ISO 8601 format.',\n      statusCode: 400\n    }\n  }];\n}\n\n// Format and validate data\nconst validatedData = {\n  title: data.title.trim(),\n  description: data.description || '',\n  startDateTime: new Date(data.startDateTime).toISOString(),\n  endDateTime: data.endDateTime ? new Date(data.endDateTime).toISOString() : new Date(new Date(data.startDateTime).getTime() + 60 * 60 * 1000).toISOString(), // Default 1 hour duration\n  attendees: Array.isArray(data.attendees) ? data.attendees : [],\n  slackChannels: Array.isArray(data.slackChannels) ? data.slackChannels : ['#general'],\n  reminderMinutes: data.reminderMinutes || 15,\n  timezone: data.timezone || 'UTC'\n};\n\nreturn [{\n  json: {\n    ...validatedData,\n    valid: true\n  }\n}];"
+      },
+      "name": "Data Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "data-validation-id",
+      "notes": "Validates required fields and formats incoming data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "false"
+            }
+          ]
+        }
+      },
+      "name": "Validation Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "id": "validation-check-id"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "calendarId": "primary",
+        "title": "={{ $json.title }}",
+        "description": "={{ $json.description }}",
+        "start": "={{ $json.startDateTime }}",
+        "end": "={{ $json.endDateTime }}",
+        "additionalFields": {
+          "attendees": "={{ $json.attendees.map(email => ({email})) }}",
+          "reminders": {
+            "useDefault": false,
+            "overrides": [
+              {
+                "method": "email",
+                "minutes": "={{ $json.reminderMinutes }}"
+              },
+              {
+                "method": "popup",
+                "minutes": "={{ $json.reminderMinutes }}"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Create Google Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 2,
+      "position": [850, 200],
+      "id": "google-calendar-create-id",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "google-calendar-credential-id"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Creates event in Google Calendar with specified details and reminders"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "eventId",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "eventTitle",
+              "value": "={{ $json.summary }}"
+            },
+            {
+              "name": "eventLink",
+              "value": "={{ $json.htmlLink }}"
+            },
+            {
+              "name": "eventStart",
+              "value": "={{ $json.start.dateTime || $json.start.date }}"
+            }
+          ],
+          "object": [
+            {
+              "name": "originalData",
+              "value": "={{ $('Data Validation').item.json }}"
+            }
+          ]
+        }
+      },
+      "name": "Store Event Details",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1050, 200],
+      "id": "store-event-details-id",
+      "notes": "Stores event ID and details for reminder scheduling"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Calculate reminder schedule based on event start time\nconst eventStart = new Date($json.eventStart);\nconst reminderMinutes = $json.originalData.reminderMinutes;\nconst reminderTime = new Date(eventStart.getTime() - (reminderMinutes * 60 * 1000));\n\n// Check if reminder time is in the future\nconst now = new Date();\nif (reminderTime <= now) {\n  return [{\n    json: {\n      skipReminder: true,\n      message: 'Event is too soon for reminder scheduling'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...($json),\n    reminderTime: reminderTime.toISOString(),\n    skipReminder: false,\n    cronExpression: `${reminderTime.getMinutes()} ${reminderTime.getHours()} ${reminderTime.getDate()} ${reminderTime.getMonth() + 1} *`\n  }\n}];"
+      },
+      "name": "Calculate Reminder Schedule",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 200],
+      "id": "calculate-reminder-id",
+      "notes": "Calculates when to send reminder based on event time"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skipReminder }}",
+              "operation": "false"
+            }
+          ]
+        }
+      },
+      "name": "Should Send Reminder",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [1450, 200],
+      "id": "should-send-reminder-id"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "={{ $json.cronExpression }}"
+            }
+          ]
+        },
+        "workflowId": "{{ $workflow.id }}",
+        "staticData": "={{ { eventData: $json } }}"
+      },
+      "name": "Schedule Reminder",
+      "type": "n8n-nodes-base.schedule",
+      "typeVersion": 1,
+      "position": [1650, 150],
+      "id": "schedule-reminder-id",
+      "notes": "Schedules the reminder notification"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format reminder message for Slack\nconst eventData = $json.eventData || $json;\nconst eventTitle = eventData.eventTitle || eventData.originalData.title;\nconst eventStart = new Date(eventData.eventStart || eventData.originalData.startDateTime);\nconst eventLink = eventData.eventLink || '#';\nconst reminderMinutes = eventData.originalData.reminderMinutes;\n\n// Format time\nconst timeFormat = eventStart.toLocaleString('ja-JP', {\n  year: 'numeric',\n  month: '2-digit',\n  day: '2-digit',\n  hour: '2-digit',\n  minute: '2-digit',\n  timeZone: eventData.originalData.timezone\n});\n\nconst message = {\n  text: `📅 イベントリマインダー`,\n  blocks: [\n    {\n      type: \"header\",\n      text: {\n        type: \"plain_text\",\n        text: \"📅 イベントリマインダー\"\n      }\n    },\n    {\n      type: \"section\",\n      fields: [\n        {\n          type: \"mrkdwn\",\n          text: `*イベント名:*\\n${eventTitle}`\n        },\n        {\n          type: \"mrkdwn\",\n          text: `*開始時刻:*\\n${timeFormat}`\n        }\n      ]\n    },\n    {\n      type: \"section\",\n      text: {\n        type: \"mrkdwn\",\n        text: `*説明:*\\n${eventData.originalData.description || 'なし'}`\n      }\n    },\n    {\n      type: \"actions\",\n      elements: [\n        {\n          type: \"button\",\n          text: {\n            type: \"plain_text\",\n            text: \"カレンダーで開く\"\n          },\n          url: eventLink,\n          style: \"primary\"\n        }\n      ]\n    },\n    {\n      type: \"context\",\n      elements: [\n        {\n          type: \"mrkdwn\",\n          text: `${reminderMinutes}分前のリマインダーです`\n        }\n      ]\n    }\n  ]\n};\n\nreturn [{\n  json: {\n    ...message,\n    channels: eventData.originalData.slackChannels\n  }\n}];"
+      },
+      "name": "Format Slack Message",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1650, 300],
+      "id": "format-slack-message-id",
+      "notes": "Formats reminder message with event details for Slack"
+    },
+    {
+      "parameters": {
+        "operation": "post",
+        "channel": "={{ $json.channels[0] }}",
+        "text": "={{ $json.text }}",
+        "jsonParameters": true,
+        "otherOptions": {
+          "blocks": "={{ JSON.stringify($json.blocks) }}"
+        }
+      },
+      "name": "Send Slack Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1850, 300],
+      "id": "slack-notification-id",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-credential-id"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "notes": "Sends formatted reminder to Slack channel"
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ JSON.stringify({\n  success: true,\n  eventId: $('Store Event Details').item.json.eventId,\n  eventLink: $('Store Event Details').item.json.eventLink,\n  reminderScheduled: !$('Calculate Reminder Schedule').item.json.skipReminder,\n  message: 'Calendar event created successfully'\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 350],
+      "id": "success-response-id",
+      "notes": "Returns success response to webhook caller"
+    },
+    {
+      "parameters": {
+        "responseCode": "={{ $json.statusCode || 400 }}",
+        "responseData": "={{ JSON.stringify({\n  success: false,\n  error: $json.message || 'Validation failed',\n  details: $json\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "id": "error-response-id",
+      "notes": "Returns error response for validation failures"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle Google Calendar API errors\nconst error = $json.error || {};\nconst originalData = $('Data Validation').item.json;\n\n// Log error details\nconsole.error('Google Calendar API Error:', error);\n\n// Send error notification to admin channel\nconst errorMessage = {\n  text: '❌ カレンダーイベント作成エラー',\n  blocks: [\n    {\n      type: \"header\",\n      text: {\n        type: \"plain_text\",\n        text: \"❌ カレンダーイベント作成エラー\"\n      }\n    },\n    {\n      type: \"section\",\n      fields: [\n        {\n          type: \"mrkdwn\",\n          text: `*エラー内容:*\\n${error.message || 'Unknown error'}`\n        },\n        {\n          type: \"mrkdwn\",\n          text: `*イベント名:*\\n${originalData.title}`\n        }\n      ]\n    },\n    {\n      type: \"section\",\n      text: {\n        type: \"mrkdwn\",\n        text: `*詳細:*\\n\\`\\`\\`${JSON.stringify(error, null, 2)}\\`\\`\\``\n      }\n    }\n  ],\n  channel: '#admin-alerts'\n};\n\nreturn [{\n  json: {\n    ...errorMessage,\n    webhookResponse: {\n      success: false,\n      error: 'Failed to create calendar event',\n      details: error.message,\n      statusCode: 500\n    }\n  }\n}];"
+      },
+      "name": "Handle Calendar Error",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 400],
+      "id": "handle-calendar-error-id",
+      "notes": "Handles Google Calendar API errors and notifies admin"
+    },
+    {
+      "parameters": {
+        "operation": "post",
+        "channel": "={{ $json.channel }}",
+        "text": "={{ $json.text }}",
+        "jsonParameters": true,
+        "otherOptions": {
+          "blocks": "={{ JSON.stringify($json.blocks) }}"
+        }
+      },
+      "name": "Send Error Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1250, 450],
+      "id": "send-error-alert-id",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "slack-credential-id"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Sends error notification to admin channel"
+    },
+    {
+      "parameters": {
+        "responseCode": 500,
+        "responseData": "={{ JSON.stringify($('Handle Calendar Error').item.json.webhookResponse) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Calendar Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 450],
+      "id": "calendar-error-response-id",
+      "notes": "Returns error response for calendar creation failures"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Validation": {
+      "main": [
+        [
+          {
+            "node": "Validation Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Check": {
+      "main": [
+        [
+          {
+            "node": "Create Google Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Store Event Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle Calendar Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Event Details": {
+      "main": [
+        [
+          {
+            "node": "Calculate Reminder Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Reminder Schedule": {
+      "main": [
+        [
+          {
+            "node": "Should Send Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Reminder": {
+      "main": [
+        [
+          {
+            "node": "Schedule Reminder",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Slack Message": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Notification": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Calendar Error": {
+      "main": [
+        [
+          {
+            "node": "Send Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Error Alert": {
+      "main": [
+        [
+          {
+            "node": "Calendar Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "versionId": "google-calendar-slack-reminder-v1.0.0",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": null
+  },
+  "id": "",
+  "tags": [
+    "calendar",
+    "slack",
+    "reminder",
+    "automation",
+    "webhook"
+  ],
+  "meta": {
+    "createdAt": "2025-08-17T03:07:00.000Z",
+    "updatedAt": "2025-08-17T03:07:00.000Z",
+    "author": "Claude Code",
+    "description": "Automatically creates Google Calendar events and sends Slack reminders based on webhook input"
+  },
+  "staticData": null
+}
