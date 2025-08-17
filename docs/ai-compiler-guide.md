@@ -77,7 +77,7 @@ your-repo/
    以下の機能を持つn8nワークフローを作成してください：
    
    1. Discordからメッセージを受信
-   2. OpenAI GPT-4でメッセージを処理
+   2. OpenAI gpt-5-miniでメッセージを処理
    3. 結果をDiscordに返信
    
    必要な設定：

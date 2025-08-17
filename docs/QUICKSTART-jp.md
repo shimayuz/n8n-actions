@@ -101,18 +101,18 @@ Schedule/Cron
 ai-chatbot-workflow
 
 ### Workflow Description
-GPT-4を使用したインテリジェントなチャットボット
+gpt-5-miniを使用したインテリジェントなチャットボット
 
 ### Trigger Type
 Webhook
 
 ### Required Integrations
-- OpenAI GPT-4（AI処理）
+- OpenAI gpt-5-mini（AI処理）
 - Discord（メッセージ送受信）
 
 ### Data Flow Specification
 1. Discordからメッセージを受信
-2. GPT-4で返答を生成
+2. gpt-5-miniで返答を生成
 3. Discordに返信
 ```
 

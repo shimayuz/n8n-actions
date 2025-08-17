@@ -69,27 +69,27 @@ Schedule/Cron
 
 ### 3. AIチャットボット（Discord）
 
-GPT-4を使用した高機能チャットボット。
+gpt-5-miniを使用した高機能チャットボット。
 
 ```markdown
 ### Workflow Name
 discord-ai-assistant
 
 ### Workflow Description
-DiscordでGPT-4を使った質問応答ボット。会話履歴を保持し、文脈を理解した返答が可能。
+Discordでgpt-5-miniを使った質問応答ボット。会話履歴を保持し、文脈を理解した返答が可能。
 
 ### Trigger Type
 Webhook
 
 ### Required Integrations
 - Discord（メッセージ送受信）
-- OpenAI GPT-4（AI処理）
+- OpenAI gpt-5-mini（AI処理）
 - PostgreSQL（会話履歴保存）
 
 ### Data Flow Specification
 1. Discordからメッセージを受信
 2. ユーザーIDで過去の会話履歴を取得
-3. GPT-4にコンテキスト付きで質問
+3. gpt-5-miniにコンテキスト付きで質問
 4. 返答をDiscordに送信
 5. 会話履歴をDBに保存
 
@@ -99,7 +99,7 @@ Webhook
 [x] Logging/Audit Trail
 ```
 
-**生成されるノード**: Discord Trigger → PostgreSQL (Read) → GPT-4 Agent → Discord (Send) → PostgreSQL (Write)
+**生成されるノード**: Discord Trigger → PostgreSQL (Read) → gpt-5-mini Agent → Discord (Send) → PostgreSQL (Write)
 
 ---
 

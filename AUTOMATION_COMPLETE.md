@@ -194,7 +194,7 @@ VALIDATION_STRICT=true
 
 ### Example: AI Chat Integration
 - **Input**: Natural language requirements
-- **Output**: Discord bot with GPT-4 integration
+- **Output**: Discord bot with gpt-5-mini integration
 - **Time**: 2 minutes generation + validation
 - **Result**: Production-ready in 10 minutes
 

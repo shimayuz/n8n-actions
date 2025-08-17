@@ -119,13 +119,13 @@ Webhook
 
 ### Required Integrations
 - Gmail（メール受信）
-- OpenAI GPT-4（内容分析）
+- OpenAI gpt-5-mini（内容分析）
 - Slack（通知）
 - PostgreSQL（データ保存）
 
 ### Data Flow Specification
 1. メールを受信
-2. GPT-4で内容を分析・カテゴリ分け
+2. gpt-5-miniで内容を分析・カテゴリ分け
 3. カテゴリに基づいて担当者を決定
 4. Slackで担当者に通知
 5. データベースに記録
@@ -172,7 +172,7 @@ Webhook
 # 環境変数を設定
 export ANTHROPIC_API_KEY="your-api-key"
 export GENERATION_MODE="create"
-export PR_BODY="Discordボットを作成してください。GPT-4と連携し、質問に回答する機能を実装。"
+export PR_BODY="Discordボットを作成してください。gpt-5-miniと連携し、質問に回答する機能を実装。"
 
 # ワークフロー生成を実行
 node .github/scripts/enhanced-workflow-generator.js
@@ -202,7 +202,7 @@ cat generated_workflow.json
 生成されるワークフロー:
 - チャットトリガー
 - コンテキスト取得
-- GPT-4処理
+- gpt-5-mini処理
 - メモリ管理
 - レスポンス返信
 ```

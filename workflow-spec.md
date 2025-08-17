@@ -195,7 +195,7 @@ const INTEGRATION_NODES = [
       "typeVersion": 1,
       "position": [250, 500],
       "parameters": {
-        "model": "gpt-4"
+        "model": "gpt-5-mini"
       }
     }
   ],
