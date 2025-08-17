@@ -1,0 +1,248 @@
+{
+  "name": "Demo Chat Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "demo-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "name": "Chat Message Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "chat-webhook-trigger-id",
+      "notes": "チャットメッセージの受信エンドポイント"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "userMessage",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId || 'anonymous' }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "name": "Chat Input Processing",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "id": "chat-input-processing-id",
+      "notes": "チャット入力データの整形と処理"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "content": "あなたは親切で知識豊富なAIアシスタントです。ユーザーの質問に日本語で丁寧に回答してください。"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.userMessage }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        }
+      },
+      "name": "OpenAI Chat Completion",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "id": "openai-chat-id",
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credential-id"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "OpenAI GPT-4o-miniによるチャット応答生成"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Agent logic to enhance chat response\nconst chatData = $('Chat Input Processing').item.json;\nconst openaiResponse = $json;\n\n// Check if OpenAI response was successful\nif (openaiResponse.error) {\n  return [{\n    json: {\n      response: \"申し訳ございませんが、現在AIサービスに接続できません。しばらく後にもう一度お試しください。\",\n      userId: chatData.userId,\n      timestamp: chatData.timestamp,\n      error: true,\n      errorDetails: openaiResponse.error\n    }\n  }];\n}\n\n// Extract the AI response\nconst aiMessage = openaiResponse.choices?.[0]?.message?.content || openaiResponse.message || \"応答を生成できませんでした。\";\n\n// Agent enhancement: Add contextual information\nlet enhancedResponse = aiMessage;\n\n// Check for specific patterns and add helpful context\nif (chatData.userMessage.toLowerCase().includes('時間') || chatData.userMessage.toLowerCase().includes('time')) {\n  const currentTime = new Date().toLocaleString('ja-JP', {\n    timeZone: 'Asia/Tokyo',\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n    hour: '2-digit',\n    minute: '2-digit'\n  });\n  enhancedResponse += `\\n\\n📅 現在の日本時間: ${currentTime}`;\n}\n\nif (chatData.userMessage.toLowerCase().includes('天気') || chatData.userMessage.toLowerCase().includes('weather')) {\n  enhancedResponse += \"\\n\\n🌤️ より詳しい天気情報が必要でしたら、具体的な地域名をお教えください。\";\n}\n\n// Add user tracking for conversation continuity\nconst conversationContext = {\n  userId: chatData.userId,\n  messageCount: 1, // This could be enhanced with actual counting\n  lastInteraction: chatData.timestamp\n};\n\nreturn [{\n  json: {\n    response: enhancedResponse,\n    userId: chatData.userId,\n    timestamp: new Date().toISOString(),\n    originalMessage: chatData.userMessage,\n    aiModel: \"gpt-4o-mini\",\n    conversationContext: conversationContext,\n    responseTime: Date.now() - new Date(chatData.timestamp).getTime()\n  }\n}];"
+      },
+      "name": "Agent Processing",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "id": "agent-processing-id",
+      "notes": "エージェントによる応答の拡張と文脈の追加"
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ JSON.stringify({\n  success: true,\n  message: $json.response,\n  userId: $json.userId,\n  timestamp: $json.timestamp,\n  metadata: {\n    model: $json.aiModel,\n    responseTime: $json.responseTime + 'ms'\n  }\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Chat Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "id": "chat-response-id",
+      "notes": "チャット応答の返却"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Error handling for OpenAI failures\nconst chatData = $('Chat Input Processing').item.json;\nconst error = $json.error || {};\n\n// Log error for debugging\nconsole.error('OpenAI Chat Error:', error);\n\n// Generate fallback response\nconst fallbackResponses = [\n  \"申し訳ございませんが、現在システムが混雑しております。しばらく後にもう一度お試しください。\",\n  \"AIサービスが一時的に利用できません。お急ぎの場合は、直接お問い合わせください。\",\n  \"技術的な問題が発生しています。ご迷惑をおかけして申し訳ございません。\"\n];\n\nconst randomFallback = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];\n\nreturn [{\n  json: {\n    success: false,\n    message: randomFallback,\n    userId: chatData.userId,\n    timestamp: new Date().toISOString(),\n    error: true,\n    errorType: 'ai_service_unavailable',\n    statusCode: 503\n  }\n}];"
+      },
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 500],
+      "id": "error-handler-id",
+      "notes": "OpenAIエラー時のフォールバック処理"
+    },
+    {
+      "parameters": {
+        "responseCode": "={{ $json.statusCode || 503 }}",
+        "responseData": "={{ JSON.stringify({\n  success: $json.success,\n  message: $json.message,\n  userId: $json.userId,\n  timestamp: $json.timestamp,\n  error: $json.error,\n  errorType: $json.errorType\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 500],
+      "id": "error-response-id",
+      "notes": "エラー応答の返却"
+    }
+  ],
+  "connections": {
+    "Chat Message Trigger": {
+      "main": [
+        [
+          {
+            "node": "Chat Input Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Input Processing": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Completion": {
+      "main": [
+        [
+          {
+            "node": "Agent Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Processing": {
+      "main": [
+        [
+          {
+            "node": "Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "versionId": "demo-chat-workflow-v1.0.0",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": null
+  },
+  "id": "",
+  "tags": [
+    "chat",
+    "ai",
+    "openai",
+    "chatbot",
+    "demo"
+  ],
+  "meta": {
+    "createdAt": "2025-08-17T04:10:00.000Z",
+    "updatedAt": "2025-08-17T04:10:00.000Z",
+    "author": "Claude Code",
+    "description": "シンプルなチャットボットツール - Chat node、Agent node、OpenAI chat nodeを使用"
+  },
+  "staticData": null
+}
