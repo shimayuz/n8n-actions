@@ -21,7 +21,9 @@ In YOUR forked repository:
 1. Go to `Issues` → `New issue`
 2. Select **"n8n Workflow Request"** template
 3. Describe your workflow in plain language
-4. Submit and wait ~2 minutes for AI magic ✨
+4. Submit the issue
+5. **Important**: Comment `@claude` in the issue to trigger generation
+6. Wait ~2 minutes for AI magic ✨
 
 ## 📚 Documentation
 
@@ -69,10 +71,12 @@ graph LR
 ```markdown
 Create a workflow that:
 1. Monitors a Slack channel for questions
-2. Uses gpt-5-mini to generate answers
+2. Uses gpt-4o-mini to generate answers
 3. Posts responses back to Slack
 4. Logs everything to a database
 ```
+
+**After submitting the issue, comment `@claude` to start generation!**
 
 **Result**: Complete, working n8n workflow in 2 minutes! 🎉
 
