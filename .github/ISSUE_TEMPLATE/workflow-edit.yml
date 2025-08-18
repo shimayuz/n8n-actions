@@ -1,0 +1,183 @@
+name: Edit Existing n8n Workflow
+description: Request to edit an existing n8n workflow using AI
+title: "[EDIT]: "
+labels: ["workflow-edit", "ai-generation", "needs-triage"]
+assignees:
+  - heavenlykiss0820
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 🔧 n8n Workflow Edit Request
+        
+        This issue will trigger automatic modification of an existing n8n workflow using Claude AI.
+        You need the workflow ID from your n8n instance or the original GitHub PR.
+        
+        ---
+  
+  - type: input
+    id: workflow_id
+    attributes:
+      label: n8n Workflow ID
+      description: The ID of the workflow in your n8n instance (found in the URL or workflow settings)
+      placeholder: ex. abCDE1f6gHiJKL7 or https://my-n8n.app/workflow/abCDE1f6gHiJKL7
+    validations:
+      required: false
+  
+  - type: input
+    id: github_pr_number
+    attributes:
+      label: Original GitHub PR Number
+      description: The PR number where this workflow was originally created (if applicable)
+      placeholder: ex. #123
+    validations:
+      required: false
+  
+  - type: input
+    id: workflow_file_path
+    attributes:
+      label: Workflow File Path
+      description: Path to the workflow JSON file in this repository
+      placeholder: ex. workflows/customer-onboarding.json
+    validations:
+      required: false
+  
+  - type: markdown
+    attributes:
+      value: |
+        > **Note**: You must provide at least one of the above identifiers (Workflow ID, PR Number, or File Path)
+  
+  - type: input
+    id: workflow_name
+    attributes:
+      label: Workflow Name
+      description: Current name of the workflow (helps identify it)
+      placeholder: ex. customer-onboarding-automation
+    validations:
+      required: true
+  
+  - type: dropdown
+    id: edit_type
+    attributes:
+      label: Type of Edit
+      description: What kind of changes do you need?
+      multiple: true
+      options:
+        - Add new nodes
+        - Remove nodes
+        - Modify node parameters
+        - Change connections/flow
+        - Update integrations
+        - Fix errors
+        - Performance optimization
+        - Add error handling
+        - Update credentials
+        - Other
+    validations:
+      required: true
+  
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current Behavior
+      description: Describe how the workflow currently works
+      placeholder: |
+        The workflow currently:
+        1. Receives webhook from form
+        2. Sends email to admin
+        3. Creates database record
+    validations:
+      required: true
+  
+  - type: textarea
+    id: desired_changes
+    attributes:
+      label: Desired Changes
+      description: Describe the specific changes you want to make
+      placeholder: |
+        I want to:
+        1. Add Slack notification after email
+        2. Include data validation before database insert
+        3. Add error handling with retry logic
+        4. Send confirmation email to user
+    validations:
+      required: true
+  
+  - type: textarea
+    id: affected_nodes
+    attributes:
+      label: Affected Nodes
+      description: List the specific nodes that need to be modified (if known)
+      placeholder: |
+        - Email Send node: Update template
+        - PostgreSQL node: Add new fields
+        - New Slack node: Send notification
+  
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How urgent is this edit?
+      options:
+        - Low - Can wait
+        - Medium - Within a week
+        - High - Within 2-3 days
+        - Critical - ASAP
+    validations:
+      required: true
+  
+  - type: checkboxes
+    id: requirements
+    attributes:
+      label: Additional Requirements
+      description: Select any additional requirements for the edit
+      options:
+        - label: Maintain backward compatibility
+          required: false
+        - label: Preserve existing data
+          required: false
+        - label: Update documentation
+          required: false
+        - label: Add comprehensive error handling
+          required: false
+        - label: Optimize for performance
+          required: false
+        - label: Add logging/monitoring
+          required: false
+        - label: Update tests
+          required: false
+  
+  - type: textarea
+    id: test_scenarios
+    attributes:
+      label: Test Scenarios
+      description: Describe how to test the edited workflow
+      placeholder: |
+        Test with:
+        1. Valid user data - should process successfully
+        2. Invalid email - should trigger validation error
+        3. Database offline - should retry and alert admin
+  
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other information that might help with the edit
+      placeholder: |
+        - Related workflows
+        - Dependencies
+        - Business context
+        - Technical constraints
+  
+  - type: checkboxes
+    id: acknowledgments
+    attributes:
+      label: Acknowledgments
+      description: Please confirm the following
+      options:
+        - label: I have backed up my current workflow
+          required: true
+        - label: I understand this will modify the existing workflow
+          required: true
+        - label: I will test the changes before deploying to production
+          required: true

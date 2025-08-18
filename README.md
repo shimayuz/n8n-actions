@@ -71,7 +71,7 @@ graph LR
 ```markdown
 Create a workflow that:
 1. Monitors a Slack channel for questions
-2. Uses gpt-4o-mini to generate answers
+2. Uses gpt-5-mini-mini to generate answers
 3. Posts responses back to Slack
 4. Logs everything to a database
 ```
@@ -79,6 +79,34 @@ Create a workflow that:
 **After submitting the issue, comment `@claude` to start generation!**
 
 **Result**: Complete, working n8n workflow in 2 minutes! 🎉
+
+## 🆔 Workflow ID Management
+
+### Editing Existing Workflows
+
+1. **Find your workflow ID**:
+   ```bash
+   # From n8n URL: https://n8n.com/workflow/[THIS-IS-THE-ID]
+   # Or use our helper script:
+   node scripts/workflow-id-helper.js list
+   ```
+
+2. **Create an edit request**:
+   - Go to Issues → New Issue
+   - Select **"Edit Existing n8n Workflow"** template
+   - Provide the workflow ID
+   - Describe your changes
+
+3. **Track workflow IDs**:
+   ```bash
+   # Set workflow ID after deployment
+   node scripts/workflow-id-helper.js set workflows/my-workflow.json abCDE1f6
+   
+   # Find workflow by name
+   node scripts/workflow-id-helper.js find "customer-onboarding"
+   ```
+
+[📄 Full Workflow ID Guide](docs/WORKFLOW-ID-GUIDE.md)
 
 ## 🔧 Advanced Usage
 

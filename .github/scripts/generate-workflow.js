@@ -260,6 +260,39 @@ async function main() {
       process.exit(1);
     }
     
+    // メタデータを追加（存在しない場合は作成）
+    if (!parsedJSON.meta) {
+      parsedJSON.meta = {};
+    }
+    
+    // GitHub関連のメタデータを追加
+    const githubContext = {
+      generatedAt: new Date().toISOString(),
+      generatedBy: 'Claude AI via GitHub Actions',
+      repository: process.env.GITHUB_REPOSITORY || 'unknown',
+      workflow: process.env.GITHUB_WORKFLOW || 'unknown',
+      runId: process.env.GITHUB_RUN_ID || 'unknown',
+      runNumber: process.env.GITHUB_RUN_NUMBER || 'unknown'
+    };
+    
+    // PRからの生成の場合、PR情報を追加
+    if (process.env.GITHUB_EVENT_NAME === 'pull_request') {
+      githubContext.pullRequest = process.env.GITHUB_REF?.replace('refs/pull/', '').replace('/merge', '') || 'unknown';
+    }
+    
+    // Issueからの生成の場合、Issue番号を追加
+    if (process.env.ISSUE_NUMBER) {
+      githubContext.issueNumber = process.env.ISSUE_NUMBER;
+    }
+    
+    // 既存のメタデータを保持しつつ、新しい情報を追加
+    parsedJSON.meta = {
+      ...parsedJSON.meta,
+      ...githubContext,
+      version: parsedJSON.meta?.version || '1.0.0',
+      description: parsedJSON.meta?.description || PR_BODY.split('\n')[0] || 'Auto-generated workflow'
+    };
+    
     // 生成されたJSONを出力（GitHub ActionsのOUTPUT用）
     const outputJSON = JSON.stringify(parsedJSON);
     console.log(`::set-output name=json_output::${outputJSON}`);

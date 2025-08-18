@@ -64,7 +64,7 @@ graph LR
 ```markdown
 以下のワークフローを作成してください：
 1. Slackチャンネルを監視
-2. 質問をgpt-4o-miniで処理
+2. 質問をgpt-5-mini-miniで処理
 3. 回答をSlackに投稿
 4. ログをデータベースに保存
 ```
@@ -79,6 +79,34 @@ graph LR
 - 💡 [実例集](docs/EXAMPLES-jp.md)
 - ❓ [よくある質問](docs/FAQ-jp.md)
 - 📖 [完全ガイド](docs/)
+
+## 🆔 ワークフローID管理
+
+### 既存ワークフローの編集
+
+1. **ワークフローIDを見つける**：
+   ```bash
+   # n8n URLから: https://n8n.com/workflow/[これがID]
+   # またはヘルパースクリプトを使用:
+   node scripts/workflow-id-helper.js list
+   ```
+
+2. **編集リクエストを作成**：
+   - Issues → New Issueへ移動
+   - **「Edit Existing n8n Workflow」**テンプレートを選択
+   - ワークフローIDを入力
+   - 変更内容を記述
+
+3. **ワークフローIDを追跡**：
+   ```bash
+   # デプロイ後にワークフローIDを設定
+   node scripts/workflow-id-helper.js set workflows/my-workflow.json abCDE1f6
+   
+   # 名前でワークフローを検索
+   node scripts/workflow-id-helper.js find "customer-onboarding"
+   ```
+
+[📄 ワークフローID完全ガイド](docs/WORKFLOW-ID-GUIDE.md)
 
 ## 🔧 上級者向け
 
