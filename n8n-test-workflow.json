@@ -78,15 +78,15 @@
           "string": [
             {
               "name": "status",
-              "value": "success"
+              "value": "{}"
             },
             {
               "name": "response",
-              "value": "メッセージを受信しました: {{ $('Chat Message Webhook').item.json.body.message || 'メッセージなし' }}"
+              "value": "{}"
             },
             {
               "name": "processing_time",
-              "value": "{{ new Date().toISOString() }}"
+              "value": "{}"
             }
           ]
         }
