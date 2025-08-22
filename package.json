@@ -1,6 +1,6 @@
 {
   "name": "n8n-workflows",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "This repository contains n8n workflows that are automatically synchronized with your n8n instance using GitHub Actions.",
   "main": "index.js",
   "directories": {
