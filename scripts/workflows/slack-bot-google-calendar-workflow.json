@@ -1,0 +1,537 @@
+{
+  "name": "Slack Bot with Google Calendar AI Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "slack-bot-calendar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-trigger-id",
+      "notes": "WebhookエンドポイントでSlackボットリクエストを受信"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Slack webhook data validation and formatting\nconst data = $json;\n\n// Slackからのwebhook dataを検証\nif (!data.text && !data.message) {\n  return [{\n    json: {\n      error: true,\n      message: 'No text or message provided',\n      statusCode: 400\n    }\n  }];\n}\n\n// メッセージテキストを取得\nconst messageText = data.text || data.message || '';\n\n// ユーザー情報を抽出\nconst userId = data.user_id || data.user || 'unknown';\nconst channelId = data.channel_id || data.channel || 'unknown';\n\n// 日本語でのリクエスト内容を整理\nconst formattedData = {\n  userMessage: messageText.trim(),\n  userId: userId,\n  channelId: channelId,\n  timestamp: new Date().toISOString(),\n  requestType: 'calendar_assistance',\n  language: 'japanese',\n  valid: true\n};\n\nconsole.log('Slack bot request received:', formattedData);\n\nreturn [{\n  json: formattedData\n}];"
+      },
+      "name": "Data Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "data-validation-id",
+      "notes": "Slackからのリクエストデータを検証・整形"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "false"
+            }
+          ]
+        }
+      },
+      "name": "Validation Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "id": "validation-check-id",
+      "notes": "データ検証の成功/失敗を判定"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "values": {
+          "string": [
+            {
+              "name": "systemPrompt",
+              "value": "あなたは親切なSlackボット兼Googleカレンダーアシスタントです。日本語で対応し、以下の機能を持ちます：\n\n1. カレンダー予定の確認・検索\n2. 新しい予定の作成\n3. 既存予定の更新・削除\n4. スケジュール管理のアドバイス\n\nユーザーのリクエストを理解し、適切なGoogleカレンダー操作を決定してください。レスポンスは必ず日本語で、親しみやすく簡潔に回答してください。"
+            },
+            {
+              "name": "userQuery",
+              "value": "={{ $json.userMessage }}"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $json.userId }}"
+            }
+          ]
+        }
+      },
+      "name": "Prepare AI Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 200],
+      "id": "prepare-ai-context-id",
+      "notes": "AIエージェント用のコンテキストとプロンプトを準備"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "={{ $json.systemPrompt }}"
+          },
+          {
+            "role": "user", 
+            "content": "{{ $json.userQuery }}"
+          }
+        ],
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        }
+      },
+      "name": "OpenAI Chat",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "id": "openai-chat-id",
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credential-id"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "OpenAI GPT-4o-miniでユーザーリクエストを解析"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse AI response and determine calendar action\nconst aiResponse = $json.content || $json.text || '';\nconst userQuery = $('Prepare AI Context').item.json.userQuery.toLowerCase();\n\n// カレンダー操作の種類を判定\nlet actionType = 'response_only';  // デフォルトは応答のみ\nlet needsCalendarAccess = false;\n\n// 予定確認・検索のキーワード\nif (userQuery.includes('予定') || userQuery.includes('スケジュール') || userQuery.includes('今日') || userQuery.includes('明日') || userQuery.includes('来週')) {\n  actionType = 'read_calendar';\n  needsCalendarAccess = true;\n}\n\n// 予定作成のキーワード\nif (userQuery.includes('追加') || userQuery.includes('作成') || userQuery.includes('登録') || userQuery.includes('予約')) {\n  actionType = 'create_event';\n  needsCalendarAccess = true;\n}\n\n// 予定削除・更新のキーワード\nif (userQuery.includes('削除') || userQuery.includes('キャンセル') || userQuery.includes('変更') || userQuery.includes('更新')) {\n  actionType = 'modify_event';\n  needsCalendarAccess = true;\n}\n\nconst result = {\n  aiResponse: aiResponse,\n  actionType: actionType,\n  needsCalendarAccess: needsCalendarAccess,\n  originalQuery: userQuery,\n  userId: $('Prepare AI Context').item.json.userId,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('AI response analysis:', result);\n\nreturn [{\n  json: result\n}];"
+      },
+      "name": "Analyze AI Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 200],
+      "id": "analyze-ai-response-id",
+      "notes": "AI応答を解析してカレンダー操作の必要性を判定"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needsCalendarAccess }}",
+              "operation": "true"
+            }
+          ]
+        }
+      },
+      "name": "Needs Calendar Access",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 3,
+      "position": [1450, 200],
+      "id": "needs-calendar-access-id",
+      "notes": "カレンダーアクセスが必要かどうかを判定"
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "calendarId": "primary",
+        "additionalFields": {
+          "timeMin": "={{ new Date().toISOString() }}",
+          "timeMax": "={{ new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() }}",
+          "maxResults": 10,
+          "orderBy": "startTime",
+          "singleEvents": true
+        }
+      },
+      "name": "Get Google Calendar Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 2,
+      "position": [1650, 150],
+      "id": "google-calendar-read-id",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "google-calendar-credential-id"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Googleカレンダーから今後1週間の予定を取得"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format calendar events for AI processing\nconst events = $json.items || [];\nconst aiData = $('Analyze AI Response').item.json;\n\n// イベント情報を日本語で整形\nconst formattedEvents = events.map(event => {\n  const start = event.start.dateTime || event.start.date;\n  const end = event.end.dateTime || event.end.date;\n  \n  return {\n    title: event.summary || '無題',\n    start: new Date(start).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),\n    end: new Date(end).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),\n    description: event.description || '',\n    location: event.location || ''\n  };\n});\n\n// カレンダーデータとAI応答を組み合わせ\nconst combinedResponse = {\n  aiResponse: aiData.aiResponse,\n  calendarEvents: formattedEvents,\n  eventCount: formattedEvents.length,\n  actionType: aiData.actionType,\n  userId: aiData.userId,\n  hasEvents: formattedEvents.length > 0\n};\n\nconsole.log('Calendar data formatted:', combinedResponse);\n\nreturn [{\n  json: combinedResponse\n}];"
+      },
+      "name": "Format Calendar Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1850, 150],
+      "id": "format-calendar-data-id",
+      "notes": "カレンダーイベントを日本語形式で整形"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "あなたはSlackボット兼カレンダーアシスタントです。ユーザーのリクエストに対してカレンダー情報を含む親切な日本語応答を生成してください。\n\nカレンダーイベント情報が提供された場合は、それを含めて自然な日本語で回答してください。予定がない場合も適切に伝えてください。"
+          },
+          {
+            "role": "user",
+            "content": "元のリクエスト: {{ $('Analyze AI Response').item.json.originalQuery }}\n\nカレンダー情報:\n{{ $json.hasEvents ? $json.calendarEvents.map(e => `・${e.title} (${e.start})`).join('\\n') : '予定はありません' }}\n\n上記の情報を使って、ユーザーに親しみやすく日本語で回答してください。"
+          }
+        ],
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 300
+        }
+      },
+      "name": "Generate Final Response",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [2050, 150],
+      "id": "generate-final-response-id",
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credential-id"
+        }
+      },
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "カレンダー情報を含めた最終応答を生成"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format the final response for Slack\nconst finalResponse = $json.content || $json.text || $('Analyze AI Response').item.json.aiResponse;\nconst userId = $('Analyze AI Response').item.json.userId;\n\n// Slack用のメッセージフォーマット\nconst slackMessage = {\n  text: finalResponse,\n  response_type: 'in_channel',\n  blocks: [\n    {\n      type: \"section\",\n      text: {\n        type: \"mrkdwn\",\n        text: finalResponse\n      }\n    },\n    {\n      type: \"context\",\n      elements: [\n        {\n          type: \"mrkdwn\",\n          text: `🤖 Slackボット • ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`\n        }\n      ]\n    }\n  ]\n};\n\nconsole.log('Slack response formatted:', slackMessage);\n\nreturn [{\n  json: {\n    ...slackMessage,\n    success: true,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "Format Slack Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1650, 350],
+      "id": "format-slack-response-id",
+      "notes": "Slack応答用のメッセージフォーマットを作成"
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1850, 350],
+      "id": "success-response-id",
+      "notes": "Slackに成功応答を返却"
+    },
+    {
+      "parameters": {
+        "responseCode": "={{ $json.statusCode || 400 }}",
+        "responseData": "={{ JSON.stringify({\n  text: 'エラーが発生しました。しばらく経ってからもう一度お試しください。',\n  response_type: 'ephemeral',\n  success: false,\n  error: $json.message || 'Validation failed'\n}) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "id": "error-response-id",
+      "notes": "データ検証エラー時の応答"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle OpenAI API errors\nconst error = $json.error || {};\nconst originalData = $('Prepare AI Context').item.json;\n\nconsole.error('OpenAI API Error:', error);\n\n// エラー用の応答メッセージ\nconst errorResponse = {\n  text: 'AI処理中にエラーが発生しました。申し訳ございませんが、しばらく経ってからもう一度お試しください。',\n  response_type: 'ephemeral',\n  blocks: [\n    {\n      type: \"section\",\n      text: {\n        type: \"mrkdwn\",\n        text: '⚠️ AI処理中にエラーが発生しました。申し訳ございませんが、しばらく経ってからもう一度お試しください。'\n      }\n    },\n    {\n      type: \"context\",\n      elements: [\n        {\n          type: \"mrkdwn\",\n          text: `エラー詳細: ${error.message || 'Unknown error'}`\n        }\n      ]\n    }\n  ],\n  success: false,\n  errorType: 'openai_error'\n};\n\nreturn [{\n  json: errorResponse\n}];"
+      },
+      "name": "Handle OpenAI Error",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 450],
+      "id": "handle-openai-error-id",
+      "notes": "OpenAI APIエラー処理"
+    },
+    {
+      "parameters": {
+        "responseCode": 500,
+        "responseData": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "OpenAI Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 450],
+      "id": "openai-error-response-id",
+      "notes": "OpenAI APIエラー時の応答"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle Google Calendar API errors\nconst error = $json.error || {};\nconst aiData = $('Analyze AI Response').item.json;\n\nconsole.error('Google Calendar API Error:', error);\n\n// カレンダーアクセスエラーの場合はAI応答のみ返す\nconst fallbackResponse = {\n  text: aiData.aiResponse + '\\n\\n（カレンダー情報の取得中にエラーが発生しましたが、基本的な回答をお返ししています）',\n  response_type: 'in_channel',\n  blocks: [\n    {\n      type: \"section\",\n      text: {\n        type: \"mrkdwn\",\n        text: aiData.aiResponse\n      }\n    },\n    {\n      type: \"section\",\n      text: {\n        type: \"mrkdwn\",\n        text: '⚠️ カレンダー情報の取得中にエラーが発生しましたが、基本的な回答をお返ししています。'\n      }\n    },\n    {\n      type: \"context\",\n      elements: [\n        {\n          type: \"mrkdwn\",\n          text: `🤖 Slackボット • ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`\n        }\n      ]\n    }\n  ],\n  success: true,\n  warning: 'calendar_access_failed'\n};\n\nreturn [{\n  json: fallbackResponse\n}];"
+      },
+      "name": "Handle Calendar Error",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1650, 500],
+      "id": "handle-calendar-error-id",
+      "notes": "Googleカレンダーエラー処理（フォールバック応答）"
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Calendar Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1850, 500],
+      "id": "calendar-error-response-id",
+      "notes": "カレンダーエラー時のフォールバック応答"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Validation": {
+      "main": [
+        [
+          {
+            "node": "Validation Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Check": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Context": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat": {
+      "main": [
+        [
+          {
+            "node": "Analyze AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle OpenAI Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze AI Response": {
+      "main": [
+        [
+          {
+            "node": "Needs Calendar Access",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Calendar Access": {
+      "main": [
+        [
+          {
+            "node": "Get Google Calendar Events",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Slack Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Google Calendar Events": {
+      "main": [
+        [
+          {
+            "node": "Format Calendar Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Handle Calendar Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Calendar Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Final Response": {
+      "main": [
+        [
+          {
+            "node": "Format Slack Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Slack Response": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle OpenAI Error": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Calendar Error": {
+      "main": [
+        [
+          {
+            "node": "Calendar Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "versionId": "slack-bot-google-calendar-ai-v1.0.0",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": null
+  },
+  "id": "",
+  "tags": [
+    "slack",
+    "bot",
+    "openai",
+    "google-calendar",
+    "ai-agent",
+    "webhook",
+    "automation"
+  ],
+  "meta": {
+    "createdAt": "2025-08-31T23:44:00.000Z",
+    "updatedAt": "2025-08-31T23:44:00.000Z",
+    "author": "Claude Code",
+    "description": "Slack bot with AI agent functionality that integrates with Google Calendar for schedule management using OpenAI GPT"
+  },
+  "staticData": null
+}
