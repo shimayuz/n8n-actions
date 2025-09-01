@@ -19,5 +19,9 @@
   "bugs": {
     "url": "https://github.com/shimayuz/n8n-workflows/issues"
   },
-  "homepage": "https://github.com/shimayuz/n8n-workflows#readme"
+  "homepage": "https://github.com/shimayuz/n8n-workflows#readme",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "better-sqlite3": "^12.2.0"
+  }
 }
