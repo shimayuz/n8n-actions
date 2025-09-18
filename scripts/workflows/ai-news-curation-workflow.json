@@ -1,0 +1,623 @@
+{
+  "name": "AI News Curation Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        },
+        "timezone": "Asia/Tokyo"
+      },
+      "id": "1a2b3c4d-5e6f-7a8b-9c1d-2e3f4a5b6c7d",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        320
+      ],
+      "notes": "6時間ごとにワークフローを実行"
+    },
+    {
+      "parameters": {
+        "url": "https://openai.com/blog/rss.xml",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "2b3c4d5e-6f7a-8b9c-1d2e-3f4a5b6c7d8e",
+      "name": "OpenAI RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        460,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "continueOnFail": true,
+      "notes": "OpenAI公式ブログのRSSフィード"
+    },
+    {
+      "parameters": {
+        "url": "https://hacker-news.firebaseio.com/v0/topstories.json",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "3c4d5e6f-7a8b-9c1d-2e3f-4a5b6c7d8e9f",
+      "name": "HackerNews API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "continueOnFail": true,
+      "notes": "HackerNewsのトップストーリー取得"
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/MachineLearning/hot.json?limit=50",
+        "options": {
+          "timeout": 30000
+        },
+        "headers": {
+          "User-Agent": "n8n-workflow/1.0"
+        }
+      },
+      "id": "4d5e6f7a-8b9c-1d2e-3f4a-5b6c7d8e9f1a",
+      "name": "Reddit ML API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        360
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "continueOnFail": true,
+      "notes": "Reddit r/MachineLearningの投稿取得"
+    },
+    {
+      "parameters": {
+        "url": "https://dev.to/api/articles?tag=ai&top=7",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "5e6f7a8b-9c1d-2e3f-4a5b-6c7d8e9f1a2b",
+      "name": "Dev.to API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        440
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "continueOnFail": true,
+      "notes": "Dev.toのAI関連記事取得"
+    },
+    {
+      "parameters": {
+        "url": "http://export.arxiv.org/api/query?search_query=cat:cs.AI&start=0&max_results=50&sortBy=submittedDate&sortOrder=descending",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "6f7a8b9c-1d2e-3f4a-5b6c-7d8e9f1a2b3c",
+      "name": "ArXiv API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        520
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "continueOnFail": true,
+      "notes": "ArXivのAI論文情報取得"
+    },
+    {
+      "parameters": {
+        "mode": "mergeByPosition"
+      },
+      "id": "7a8b9c1d-2e3f-4a5b-6c7d-8e9f1a2b3c4d",
+      "name": "Merge Data Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        680,
+        360
+      ],
+      "notes": "全データソースを統合"
+    },
+    {
+      "parameters": {
+        "jsCode": "// データ正規化と重複除去\nconst items = $input.all();\nconst processedItems = [];\nconst seenTitles = new Set();\n\n// 各アイテムを正規化\nfor (const item of items) {\n  let normalizedItem = {};\n  \n  // ソース別のデータ正規化\n  if (item.json.title && item.json.link) {\n    // RSS フィード (OpenAI)\n    normalizedItem = {\n      title: item.json.title,\n      url: item.json.link,\n      description: item.json.description || '',\n      publishedDate: item.json.pubDate || item.json.isoDate || new Date().toISOString(),\n      source: 'OpenAI Blog'\n    };\n  } else if (item.json.data && Array.isArray(item.json.data.children)) {\n    // Reddit API レスポンス\n    for (const child of item.json.data.children) {\n      const post = child.data;\n      normalizedItem = {\n        title: post.title,\n        url: post.url,\n        description: post.selftext || '',\n        publishedDate: new Date(post.created_utc * 1000).toISOString(),\n        source: 'Reddit r/MachineLearning'\n      };\n    }\n  } else if (Array.isArray(item.json)) {\n    // Dev.to API or HackerNews API\n    for (const article of item.json) {\n      if (article.title && article.url) {\n        normalizedItem = {\n          title: article.title,\n          url: article.url,\n          description: article.description || article.body_markdown || '',\n          publishedDate: article.published_at || article.created_at || new Date().toISOString(),\n          source: article.canonical_url?.includes('dev.to') ? 'Dev.to' : 'HackerNews'\n        };\n      }\n    }\n  } else if (item.json.feed && item.json.feed.entry) {\n    // ArXiv API レスポンス\n    for (const entry of item.json.feed.entry) {\n      normalizedItem = {\n        title: entry.title,\n        url: entry.id,\n        description: entry.summary,\n        publishedDate: entry.published,\n        source: 'ArXiv'\n      };\n    }\n  }\n  \n  // 重複チェック (タイトル類似度85%以上で除外)\n  if (normalizedItem.title) {\n    const titleLower = normalizedItem.title.toLowerCase();\n    let isDuplicate = false;\n    \n    for (const seenTitle of seenTitles) {\n      const similarity = calculateSimilarity(titleLower, seenTitle);\n      if (similarity >= 0.85) {\n        isDuplicate = true;\n        break;\n      }\n    }\n    \n    if (!isDuplicate) {\n      seenTitles.add(titleLower);\n      processedItems.push({ json: normalizedItem });\n    }\n  }\n}\n\n// 文字列類似度計算 (Levenshtein距離ベース)\nfunction calculateSimilarity(str1, str2) {\n  const matrix = [];\n  const len1 = str1.length;\n  const len2 = str2.length;\n  \n  for (let i = 0; i <= len1; i++) {\n    matrix[i] = [i];\n  }\n  \n  for (let j = 0; j <= len2; j++) {\n    matrix[0][j] = j;\n  }\n  \n  for (let i = 1; i <= len1; i++) {\n    for (let j = 1; j <= len2; j++) {\n      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;\n      matrix[i][j] = Math.min(\n        matrix[i - 1][j] + 1,\n        matrix[i][j - 1] + 1,\n        matrix[i - 1][j - 1] + cost\n      );\n    }\n  }\n  \n  const maxLen = Math.max(len1, len2);\n  return maxLen === 0 ? 1 : (maxLen - matrix[len1][len2]) / maxLen;\n}\n\nreturn processedItems;"
+      },
+      "id": "8b9c1d2e-3f4a-5b6c-7d8e-9f1a2b3c4d5e",
+      "name": "Normalize & Deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        360
+      ],
+      "notes": "データ正規化と85%類似度での重複除去"
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "options": {
+          "maxTokens": 200,
+          "temperature": 0.3
+        }
+      },
+      "id": "709c0950-6424-41dc-ad8c-a43121351d2f",
+      "name": "Generate AI Summary",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        320
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "openAiApi": {
+          "id": "uE41hMr9XrNU5VOc",
+          "name": "OpenAi account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "OpenAI APIで記事要約を生成"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "You are an AI news analyst. For each article provided, perform the following tasks:\n\n1. **Summarization**: Create a concise 100-200 character summary in Japanese that captures the key points\n2. **Categorization**: Classify into one of these categories: Research, Product, Industry, Technical, Ethics, Tools\n3. **Importance Scoring**: Rate from 0-10 based on:\n   - Impact on AI field (0-3 points)\n   - Novelty/innovation (0-2 points)\n   - Practical application (0-2 points)\n   - Source credibility (0-2 points)\n   - Recency bonus (0-1 points)\n\nReturn JSON format:\n{\n  \"title\": \"original title\",\n  \"url\": \"original url\",\n  \"summary\": \"Japanese summary\",\n  \"category\": \"category\",\n  \"importance_score\": score,\n  \"source\": \"original source\",\n  \"publishedDate\": \"original date\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        48
+      ],
+      "id": "abb12ec6-8233-4bf3-8a1b-ca4306f1a4eb",
+      "name": "AI Analysis Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 重要度スコアリングと分析\nconst items = $input.all();\nconst scoredItems = [];\n\nfor (const item of items) {\n  let score = 0;\n  const data = item.json;\n  const title = (data.title || '').toLowerCase();\n  const description = (data.description || '').toLowerCase();\n  const source = data.source || '';\n  \n  // ソース別重み付け\n  const sourceWeights = {\n    'OpenAI Blog': 2.0,\n    'ArXiv': 1.8,\n    'Reddit r/MachineLearning': 1.5,\n    'Dev.to': 1.2,\n    'HackerNews': 1.0\n  };\n  \n  score += sourceWeights[source] || 1.0;\n  \n  // キーワードベース加点\n  const highValueKeywords = [\n    'gpt', 'chatgpt', 'claude', 'gemini', 'llm', 'transformer',\n    'breakthrough', 'state-of-the-art', 'sota', 'benchmark',\n    'artificial general intelligence', 'agi', 'multimodal',\n    'fine-tuning', 'rlhf', 'alignment', 'safety'\n  ];\n  \n  const mediumValueKeywords = [\n    'machine learning', 'deep learning', 'neural network',\n    'computer vision', 'natural language processing', 'nlp',\n    'reinforcement learning', 'generative', 'diffusion'\n  ];\n  \n  // 高価値キーワード (+1.5点)\n  for (const keyword of highValueKeywords) {\n    if (title.includes(keyword) || description.includes(keyword)) {\n      score += 1.5;\n      break;\n    }\n  }\n  \n  // 中価値キーワード (+1.0点)\n  for (const keyword of mediumValueKeywords) {\n    if (title.includes(keyword) || description.includes(keyword)) {\n      score += 1.0;\n      break;\n    }\n  }\n  \n  // 新しさによる調整\n  const publishedDate = new Date(data.publishedDate);\n  const now = new Date();\n  const hoursDiff = (now - publishedDate) / (1000 * 60 * 60);\n  \n  if (hoursDiff <= 24) score += 1.0;        // 24時間以内\n  else if (hoursDiff <= 72) score += 0.5;   // 3日以内\n  \n  // スコアを0-10の範囲に正規化\n  score = Math.min(10, Math.max(0, score));\n  \n  // カテゴリ自動分類\n  let category = 'Technical';\n  if (title.includes('research') || title.includes('paper') || source === 'ArXiv') {\n    category = 'Research';\n  } else if (title.includes('product') || title.includes('launch') || title.includes('release')) {\n    category = 'Product';\n  } else if (title.includes('industry') || title.includes('company') || title.includes('market')) {\n    category = 'Industry';\n  } else if (title.includes('ethics') || title.includes('bias') || title.includes('safety')) {\n    category = 'Ethics';\n  } else if (title.includes('tool') || title.includes('framework') || title.includes('library')) {\n    category = 'Tools';\n  }\n  \n  scoredItems.push({\n    json: {\n      ...data,\n      importance_score: score,\n      category: category,\n      analysis_timestamp: new Date().toISOString()\n    }\n  });\n}\n\n// 重要度順でソート\nscoredItems.sort((a, b) => b.json.importance_score - a.json.importance_score);\n\nreturn scoredItems;"
+      },
+      "id": "9c1d2e3f-4a5b-6c7d-8e9f-1a2b3c4d5e6f",
+      "name": "Score & Analyze",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        320
+      ],
+      "notes": "重要度スコアリングとカテゴリ分類"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1f4a5b6-7c8d-9e1f-2a3b-4c5d6e7f8a9b",
+              "leftValue": "={{ $json.importance_score }}",
+              "rightValue": 7,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3f4a5b6-7c8d-9e1f-2a3b-4c5d6e7f8a9b",
+      "name": "Filter High Value",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        1720,
+        320
+      ],
+      "notes": "重要度7.0以上の記事のみフィルタリング"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 日次ダイジェスト生成とHTMLテンプレート適用\nconst items = $input.all();\nconst topItems = items.slice(0, 20); // 上位20記事\n\n// カテゴリ別分類\nconst categorized = {\n  Research: [],\n  Product: [],\n  Industry: [],\n  Technical: [],\n  Ethics: [],\n  Tools: []\n};\n\nfor (const item of topItems) {\n  const category = item.json.category || 'Technical';\n  if (categorized[category]) {\n    categorized[category].push(item.json);\n  }\n}\n\n// HTMLテンプレート生成\nconst generateHTML = (articles) => {\n  const today = new Date().toLocaleDateString('ja-JP');\n  \n  let html = `\n    <!DOCTYPE html>\n    <html>\n    <head>\n      <meta charset=\"UTF-8\">\n      <title>AI News Digest - ${today}</title>\n      <style>\n        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }\n        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; }\n        .category { margin: 30px 0; }\n        .category h2 { color: #2c3e50; border-left: 4px solid #3498db; padding-left: 15px; }\n        .article { margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }\n        .article h3 { margin: 0 0 10px 0; color: #2c3e50; }\n        .article a { text-decoration: none; color: #3498db; }\n        .article a:hover { text-decoration: underline; }\n        .meta { font-size: 12px; color: #666; margin: 5px 0; }\n        .summary { margin: 10px 0; line-height: 1.6; }\n        .score { background: #3498db; color: white; padding: 2px 8px; border-radius: 3px; font-size: 11px; }\n      </style>\n    </head>\n    <body>\n      <div class=\"header\">\n        <h1>🤖 AI News Digest</h1>\n        <p>${today} - Top ${articles.length} AI Stories</p>\n      </div>\n  `;\n  \n  for (const [categoryName, categoryArticles] of Object.entries(categorized)) {\n    if (categoryArticles.length === 0) continue;\n    \n    html += `<div class=\"category\"><h2>${categoryName} (${categoryArticles.length})</h2>`;\n    \n    for (const article of categoryArticles) {\n      html += `\n        <div class=\"article\">\n          <h3><a href=\"${article.url}\" target=\"_blank\">${article.title}</a></h3>\n          <div class=\"meta\">\n            <span class=\"score\">Score: ${article.importance_score.toFixed(1)}</span>\n            📰 ${article.source} | ⏰ ${new Date(article.publishedDate).toLocaleDateString('ja-JP')}\n          </div>\n          <div class=\"summary\">${article.summary}</div>\n        </div>\n      `;\n    }\n    \n    html += '</div>';\n  }\n  \n  html += `\n      <div style=\"text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666;\">\n        <p>Generated by AI News Curator | Powered by n8n + OpenAI</p>\n      </div>\n    </body>\n    </html>\n  `;\n  \n  return html;\n};\n\nconst htmlContent = generateHTML(topItems);\n\n// メタデータと一緒に返す\nreturn [{\n  json: {\n    digest_date: new Date().toISOString(),\n    total_articles: topItems.length,\n    categories: Object.keys(categorized).filter(cat => categorized[cat].length > 0),\n    html_content: htmlContent,\n    articles: topItems.map(item => item.json),\n    summary_stats: {\n      avg_score: topItems.reduce((sum, item) => sum + item.json.importance_score, 0) / topItems.length,\n      top_sources: [...new Set(topItems.map(item => item.json.source))],\n      categories_count: Object.fromEntries(\n        Object.entries(categorized).map(([cat, articles]) => [cat, articles.length])\n      )\n    }\n  }\n}];"
+      },
+      "id": "d4a5b6c7-8d9e-1f2a-3b4c-5d6e7f8a9b1c",
+      "name": "Generate Daily Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1940,
+        320
+      ],
+      "notes": "上位20記事で日次ダイジェストHTMLを生成"
+    },
+    {
+      "parameters": {
+        "fromEmail": "ai-news@example.com",
+        "toEmail": "subscriber@example.com",
+        "subject": "🤖 AI News Digest - {{ new Date().toLocaleDateString('ja-JP') }}",
+        "emailFormat": "html",
+        "message": "={{ $json.html_content }}",
+        "options": {
+          "attachments": "attachments",
+          "timeout": 30000
+        }
+      },
+      "id": "e5b6c7d8-9e1f-2a3b-4c5d-6e7f8a9b1c2d",
+      "name": "Send Email Digest",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2160,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true,
+      "notes": "HTMLダイジェストをメール配信"
+    },
+    {
+      "parameters": {
+        "url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 30000
+        },
+        "bodyParametersJson": {
+          "embeds": [
+            {
+              "title": "🤖 AI News Digest - {{ new Date().toLocaleDateString('ja-JP') }}",
+              "description": "Top {{ $json.total_articles }} AI stories curated for today",
+              "color": 3447003,
+              "fields": [
+                {
+                  "name": "📊 Statistics",
+                  "value": "Average Score: {{ $json.summary_stats.avg_score.toFixed(1) }}\\nCategories: {{ $json.categories.join(', ') }}\\nSources: {{ $json.summary_stats.top_sources.join(', ') }}"
+                },
+                {
+                  "name": "📧 Full Digest",
+                  "value": "Check your email for the complete HTML digest with all articles and summaries."
+                }
+              ],
+              "footer": {
+                "text": "Generated by AI News Curator | Powered by n8n + OpenAI"
+              },
+              "timestamp": "{{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "f6c7d8e9-1f2a-3b4c-5d6e-7f8a9b1c2d3e",
+      "name": "Send Discord Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2160,
+        340
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true,
+      "notes": "Discord通知でサマリーを配信"
+    },
+    {
+      "parameters": {
+        "url": "https://your-webhook-endpoint.com/ai-news",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 30000
+        },
+        "bodyParametersJson": {
+          "timestamp": "{{ new Date().toISOString() }}",
+          "digest_date": "{{ $json.digest_date }}",
+          "total_articles": "{{ $json.total_articles }}",
+          "articles": "{{ $json.articles }}",
+          "summary_stats": "{{ $json.summary_stats }}",
+          "html_content": "{{ $json.html_content }}"
+        }
+      },
+      "id": "a7d8e9f1-2a3b-4c5d-6e7f-8a9b1c2d3e4f",
+      "name": "Custom Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2160,
+        440
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true,
+      "notes": "カスタムWebhookエンドポイントへの配信"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 実行ログと統計情報の記録\nconst executionData = {\n  execution_id: $execution.id,\n  execution_time: new Date().toISOString(),\n  workflow_name: 'AI News Curation',\n  success: true,\n  statistics: $input.first().json.summary_stats,\n  total_processed: $input.first().json.total_articles,\n  errors: $node.context.get('errors') || []\n};\n\n// ログ出力\nconsole.log('AI News Curation Workflow Completed:', executionData);\n\nreturn [{ json: executionData }];"
+      },
+      "id": "b8e9f1a2-3b4c-5d6e-7f8a-9b1c2d3e4f5a",
+      "name": "Execution Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2380,
+        340
+      ],
+      "notes": "実行ログと統計情報の記録"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "OpenAI RSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HackerNews API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reddit ML API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Dev.to API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ArXiv API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI RSS": {
+      "main": [
+        [
+          {
+            "node": "Merge Data Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HackerNews API": {
+      "main": [
+        [
+          {
+            "node": "Merge Data Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Reddit ML API": {
+      "main": [
+        [
+          {
+            "node": "Merge Data Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Dev.to API": {
+      "main": [
+        [
+          {
+            "node": "Merge Data Sources",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "ArXiv API": {
+      "main": [
+        [
+          {
+            "node": "Merge Data Sources",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge Data Sources": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Deduplicate": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Summary": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Analysis Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis Agent": {
+      "main": [
+        [
+          {
+            "node": "Score & Analyze",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score & Analyze": {
+      "main": [
+        [
+          {
+            "node": "Filter High Value",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter High Value": {
+      "main": [
+        [
+          {
+            "node": "Generate Daily Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Daily Digest": {
+      "main": [
+        [
+          {
+            "node": "Send Email Digest",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Discord Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Custom Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Digest": {
+      "main": [
+        [
+          {
+            "node": "Execution Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Discord Notification": {
+      "main": [
+        [
+          {
+            "node": "Execution Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custom Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execution Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": {},
+  "tags": [
+    {
+      "createdAt": "2025-09-18T14:18:00.000Z",
+      "updatedAt": "2025-09-18T14:18:00.000Z",
+      "id": "1",
+      "name": "AI"
+    },
+    {
+      "createdAt": "2025-09-18T14:18:00.000Z",
+      "updatedAt": "2025-09-18T14:18:00.000Z",
+      "id": "2",
+      "name": "News"
+    },
+    {
+      "createdAt": "2025-09-18T14:18:00.000Z",
+      "updatedAt": "2025-09-18T14:18:00.000Z",
+      "id": "3",
+      "name": "Automation"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-09-18T14:18:00.000Z",
+  "versionId": "1"
+}
