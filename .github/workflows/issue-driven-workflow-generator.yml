@@ -13,7 +13,10 @@ permissions:
 
 jobs:
   analyze-issue:
-    if: contains(github.event.issue.labels.*.name, 'workflow-request')
+    # 書き込み権限のある人（オーナー・メンバー・コラボレーター）が作成またはコメントしたときだけ動かす
+    if: >-
+      contains(github.event.issue.labels.*.name, 'workflow-request') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association)
     runs-on: ubuntu-latest
     outputs:
       should_generate: ${{ steps.analyze.outputs.should_generate }}
@@ -145,7 +148,13 @@ jobs:
             
             // Save to environment
             core.exportVariable('ISSUE_NUMBER', context.issue.number);
-            core.exportVariable('WORKFLOW_NAME', fields.workflow_name);
+            // Issue本文の値をそのままシェルやファイル名に使わない。英数字・ハイフン・アンダースコアだけに絞る
+            const safeWorkflowName = String(fields.workflow_name || '')
+              .trim()
+              .replace(/[^A-Za-z0-9_-]+/g, '-')
+              .replace(/^-+|-+$/g, '')
+              .slice(0, 64) || `workflow-${context.issue.number}`;
+            core.exportVariable('WORKFLOW_NAME', safeWorkflowName);
             core.exportVariable('WORKFLOW_REQUIREMENTS', JSON.stringify(fields));
             
             return fields;
@@ -166,7 +175,7 @@ jobs:
             echo "workflow_generated=true" >> $GITHUB_OUTPUT
             
             # Create workflow file
-            WORKFLOW_FILE="workflows/${{ env.WORKFLOW_NAME }}.workflow.json"
+            WORKFLOW_FILE="workflows/${WORKFLOW_NAME}.workflow.json"
             cp generated_workflow.json "$WORKFLOW_FILE"
             echo "workflow_file=$WORKFLOW_FILE" >> $GITHUB_OUTPUT
           else
@@ -176,11 +185,13 @@ jobs:
       - name: Validate Generated Workflow
         id: validate
         if: steps.generate.outputs.workflow_generated == 'true'
+        env:
+          WORKFLOW_FILE: ${{ steps.generate.outputs.workflow_file }}
         run: |
           echo "🔍 Validating generated workflow..."
           
           # Run validation script
-          if node scripts/validate-workflow.js "${{ steps.generate.outputs.workflow_file }}"; then
+          if node scripts/validate-workflow.js "$WORKFLOW_FILE"; then
             echo "validation_passed=true" >> $GITHUB_OUTPUT
             echo "✅ Workflow validation passed!"
           else
@@ -192,31 +203,35 @@ jobs:
         id: branch
         if: steps.validate.outputs.validation_passed == 'true'
         run: |
-          BRANCH_NAME="workflow/${{ env.WORKFLOW_NAME }}-${{ github.run_number }}"
+          BRANCH_NAME="workflow/${WORKFLOW_NAME}-${GITHUB_RUN_NUMBER}"
           git checkout -b "$BRANCH_NAME"
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
       
       - name: Commit Workflow
         if: steps.validate.outputs.validation_passed == 'true'
+        env:
+          WORKFLOW_FILE: ${{ steps.generate.outputs.workflow_file }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add "${{ steps.generate.outputs.workflow_file }}"
+          git add "$WORKFLOW_FILE"
           git add generation_report.json
           
-          git commit -m "feat: Add ${{ env.WORKFLOW_NAME }} workflow from issue #${{ env.ISSUE_NUMBER }}
+          git commit -m "feat: Add ${WORKFLOW_NAME} workflow from issue #${ISSUE_NUMBER}
           
           - Generated using Enhanced AI Workflow Generator
           - Validated and tested
           - Ready for review
           
-          Resolves #${{ env.ISSUE_NUMBER }}"
+          Resolves #${ISSUE_NUMBER}"
       
       - name: Push to GitHub
         if: steps.validate.outputs.validation_passed == 'true'
+        env:
+          BRANCH_NAME: ${{ steps.branch.outputs.branch_name }}
         run: |
-          git push origin "${{ steps.branch.outputs.branch_name }}"
+          git push origin "$BRANCH_NAME"
       
       - name: Create Pull Request
         id: pr
@@ -336,7 +351,10 @@ jobs:
             });
 
   handle-commands:
-    if: github.event_name == 'issue_comment' && contains(github.event.issue.labels.*.name, 'workflow-request')
+    if: >-
+      github.event_name == 'issue_comment' &&
+      contains(github.event.issue.labels.*.name, 'workflow-request') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     
     steps:
@@ -362,6 +380,8 @@ jobs:
       
       - name: Execute Command
         if: steps.parse.outputs.command != 'none'
+        env:
+          COMMAND: ${{ steps.parse.outputs.command }}
         run: |
-          echo "Executing command: ${{ steps.parse.outputs.command }}"
+          echo "Executing command: $COMMAND"
           # Command execution logic here

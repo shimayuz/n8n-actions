@@ -65,10 +65,14 @@ jobs:
 
       - name: Determine workflows to sync
         id: workflows
+        env:
+          # ファイル名や入力値は環境変数で渡す（シェルの文字列に直接展開しない）
+          INPUT_WORKFLOW_NAME: ${{ github.event.inputs.workflow_name }}
+          CHANGED_FILES: ${{ steps.changed-files.outputs.changed_files }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.workflow_name }}" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "$INPUT_WORKFLOW_NAME" ]; then
             # Specific workflow requested
-            WORKFLOW_FILE="${WORKFLOWS_DIR}/${{ github.event.inputs.workflow_name }}.json"
+            WORKFLOW_FILE="${WORKFLOWS_DIR}/${INPUT_WORKFLOW_NAME}.json"
             if [ -f "$WORKFLOW_FILE" ]; then
               echo "Syncing specific workflow: $WORKFLOW_FILE"
               echo "workflows_to_sync=$WORKFLOW_FILE" >> $GITHUB_OUTPUT
@@ -79,8 +83,8 @@ jobs:
             fi
           elif [ "${{ steps.changed-files.outputs.has_changes }}" = "true" ]; then
             # Sync only changed files
-            echo "Syncing changed workflows: ${{ steps.changed-files.outputs.changed_files }}"
-            echo "workflows_to_sync=${{ steps.changed-files.outputs.changed_files }}" >> $GITHUB_OUTPUT
+            echo "Syncing changed workflows: $CHANGED_FILES"
+            echo "workflows_to_sync=$CHANGED_FILES" >> $GITHUB_OUTPUT
             echo "sync_mode=changed" >> $GITHUB_OUTPUT
           else
             # Sync all workflows (manual dispatch without specific workflow)
@@ -112,6 +116,7 @@ jobs:
         id: sync
         env:
           N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+          WORKFLOWS_TO_SYNC: ${{ steps.workflows.outputs.workflows_to_sync }}
         run: |
           echo "## 🔄 n8n Sync Report" > sync_report.md
           echo "" >> sync_report.md
@@ -124,7 +129,7 @@ jobs:
           FAILED_COUNT=0
           
           # Process each workflow
-          for workflow_file in ${{ steps.workflows.outputs.workflows_to_sync }}; do
+          for workflow_file in $WORKFLOWS_TO_SYNC; do
             if [ -f "$workflow_file" ]; then
               WORKFLOW_NAME=$(basename "$workflow_file" .json)
               echo "### 📄 $WORKFLOW_NAME" >> sync_report.md

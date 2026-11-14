@@ -40,9 +40,11 @@ jobs:
       
       - name: Determine version bump type
         id: bump_type
+        env:
+          # コミットメッセージは環境変数で渡す（シェルの文字列に直接展開しない）
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           # コミットメッセージから変更タイプを判定
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
           
           if [[ "$COMMIT_MSG" == *"BREAKING"* ]] || [[ "$COMMIT_MSG" == *"major:"* ]]; then
             echo "type=major" >> $GITHUB_OUTPUT
